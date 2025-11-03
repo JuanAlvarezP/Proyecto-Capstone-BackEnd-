@@ -62,8 +62,15 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # --- Base de datos ---
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',  # Más adelante usaremos MySQL
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'recruitment_ai_db',
+        'USER': 'root',
+        'PASSWORD': 'juanalvarez04',  # Importante: cambiar por una contraseña segura en producción
+        'HOST': 'localhost',
+        'PORT': '3306',
+        'OPTIONS': {
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+        }
     }
 }
 
@@ -98,5 +105,6 @@ SIMPLE_JWT = {
 # --- CORS (para React frontend) ---
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',  # Puerto de React (Vite)
+    'http://localhost:5174',  # Puerto alternativo de Vite
 ]
 CORS_ALLOW_CREDENTIALS = True

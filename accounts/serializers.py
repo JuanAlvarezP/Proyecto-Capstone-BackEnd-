@@ -1,21 +1,87 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
+import re
 
 class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True, min_length=6)
+    password = serializers.CharField(write_only=True, min_length=8)
+    email = serializers.EmailField(required=True)
+    first_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    last_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
 
     class Meta:
         model = User
-        fields = ("username", "email", "password")
+        fields = ("username", "email", "password", "first_name", "last_name")
+
+    def validate_email(self, value):
+        """
+        Validar que el email no esté registrado
+        """
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Un usuario con este correo electrónico ya existe.")
+        return value
+
+    def validate_username(self, value):
+        """
+        Validar que el username no esté registrado
+        """
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Este nombre de usuario ya está en uso.")
+        return value
+
+    def validate_password(self, value):
+        """
+        Validar que la contraseña cumpla con los estándares de seguridad:
+        - Mínimo 8 caracteres
+        - Al menos una letra mayúscula
+        - Al menos una letra minúscula
+        - Al menos un número
+        - Al menos un carácter especial
+        """
+        if len(value) < 8:
+            raise serializers.ValidationError(
+                "La contraseña debe tener al menos 8 caracteres."
+            )
+        
+        if not re.search(r'[A-Z]', value):
+            raise serializers.ValidationError(
+                "La contraseña debe contener al menos una letra mayúscula."
+            )
+        
+        if not re.search(r'[a-z]', value):
+            raise serializers.ValidationError(
+                "La contraseña debe contener al menos una letra minúscula."
+            )
+        
+        if not re.search(r'\d', value):
+            raise serializers.ValidationError(
+                "La contraseña debe contener al menos un número."
+            )
+        
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', value):
+            raise serializers.ValidationError(
+                "La contraseña debe contener al menos un carácter especial (!@#$%^&*(),.?\":{}|<>)."
+            )
+        
+        # Validar que no contenga el username
+        if hasattr(self, 'initial_data'):
+            username = self.initial_data.get('username', '')
+            if username and username.lower() in value.lower():
+                raise serializers.ValidationError(
+                    "La contraseña no debe contener el nombre de usuario."
+                )
+        
+        return value
 
     def create(self, validated_data):
         return User.objects.create_user(
             username=validated_data["username"],
-            email=validated_data.get("email"),
+            email=validated_data["email"],
             password=validated_data["password"],
+            first_name=validated_data.get("first_name", ""),
+            last_name=validated_data.get("last_name", ""),
         )
 
 class MeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ("id", "username", "email", "is_staff", "is_superuser")
+        fields = ("id", "username", "email", "is_staff", "is_superuser", "first_name", "last_name")

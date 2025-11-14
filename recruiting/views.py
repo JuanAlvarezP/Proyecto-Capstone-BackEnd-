@@ -2,8 +2,9 @@ from rest_framework import viewsets, permissions
 from rest_framework.parsers import MultiPartParser, FormParser
 from .models import Application
 from .serializers import ApplicationSerializer
-from .utils import extract_text, compute_match
+from .utils import extract_text, compute_match, compute_match_v2
 from .ai_client import parse_cv_text
+
 
 class ApplicationViewSet(viewsets.ModelViewSet):
     queryset = Application.objects.select_related("candidate", "project").all().order_by("-created_at")
@@ -37,9 +38,12 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         app.extracted = extracted
 
         # 3. CALCULAR MATCH SCORE
-        project_skills = list(app.project.required_skills)
-        candidate_skills = extracted.get("skills", {}).get("hard", [])
 
-        app.match_score = compute_match(project_skills, candidate_skills)
+
+        req = list(app.project.required_skills or [])
+        candidate_hard = (extracted.get("skills", {}) or {}).get("hard", [])
+
+        app.match_score = compute_match_v2(req, candidate_hard)
+
 
         app.save()

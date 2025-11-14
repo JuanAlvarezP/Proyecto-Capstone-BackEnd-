@@ -1,16 +1,28 @@
-# Django y Django REST Framework
+annotated-types==0.7.0
+anyio==4.11.0
+asgiref==3.10.0
+certifi==2025.10.5
+charset-normalizer==3.4.4
+distro==1.9.0
 Django==5.2.7
-djangorestframework==3.16.1
-djangorestframework-simplejwt==5.5.0
-
-# Database
-mysqlclient==2.2.7
-
-# CORS
 django-cors-headers==4.9.0
-
-# Variables de entorno
+djangorestframework==3.16.1
+djangorestframework_simplejwt==5.5.0
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.11
+jiter==0.12.0
+mysqlclient==2.2.7
+openai==2.8.0
+pydantic==2.12.4
+pydantic_core==2.41.5
+PyJWT==2.9.0
 python-decouple==3.8
-
-# Para hacer requests HTTP (usado en tests)
 requests==2.32.4
+sniffio==1.3.1
+sqlparse==0.5.3
+tqdm==4.67.1
+typing-inspection==0.4.2
+typing_extensions==4.15.0
+urllib3==2.5.0

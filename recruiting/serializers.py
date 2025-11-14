@@ -20,4 +20,5 @@ class ApplicationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Application
         fields = "__all__"
-        read_only_fields = ("candidate", "status", "match_score", "parsed_text", "created_at")
+        # El status ya no es read_only para que los admins puedan actualizarlo
+        read_only_fields = ("candidate", "match_score", "parsed_text", "created_at")

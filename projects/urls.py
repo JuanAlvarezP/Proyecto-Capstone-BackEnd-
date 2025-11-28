@@ -5,8 +5,8 @@ from projects.views import MeetingViewSet
 
 
 router = DefaultRouter()
-router.register(r"", ProjectViewSet, basename="project")
 router.register(r"meetings", MeetingViewSet, basename="meeting")
+router.register(r"", ProjectViewSet, basename="project")
 
 urlpatterns = [
     path("", include(router.urls)),

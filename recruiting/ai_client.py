@@ -51,60 +51,52 @@ def parse_cv_text(cv_text: str):
     
 def analyze_meeting_transcript(transcript: str, hourly_rate: float):
     """
-    Lee el transcript de la reunión y devuelve:
-    - resumen del proyecto
-    - requerimientos funcionales / no funcionales
-    - horas estimadas
-    - costo estimado
+    Lee el transcript de la reunión y devuelve el análisis con skills.
     """
+    
+    # He agregado 'required_skills' al JSON y una instrucción clara abajo.
     prompt = f"""
-Eres un analista de requisitos y consultor de proyectos de software.
+    Eres un analista de requisitos y arquitecto de software experto.
+    
+    A partir de la siguiente transcripción de una reunión con un cliente,
+    identifica los requerimientos, estima el esfuerzo y SUGIERE EL STACK TECNOLÓGICO.
 
-A partir de la siguiente transcripción de una reunión con un cliente,
-identifica los requerimientos del sistema y estima el esfuerzo.
+    Devuélveme UN SOLO JSON con esta estructura EXACTA:
 
-Devuélveme UN SOLO JSON con esta estructura EXACTA:
-
-{{
-  "project_summary": "Resumen breve en 3-5 líneas en español",
-  "functional_requirements": [
     {{
-      "id": "FR1",
-      "title": "Título corto",
-      "description": "Descripción en lenguaje claro",
-      "complexity": "baja|media|alta",
-      "estimated_hours": 0
+      "project_summary": "Resumen breve en 3-5 líneas en español",
+      "required_skills": ["Tecnología1", "Tecnología2"], 
+      "functional_requirements": [
+        {{
+          "id": "FR1",
+          "title": "Título corto",
+          "description": "Descripción en lenguaje claro",
+          "complexity": "baja|media|alta",
+          "estimated_hours": 0
+        }}
+      ],
+      "non_functional_requirements": [
+        {{
+          "id": "NFR1",
+          "description": "Requisito no funcional"
+        }}
+      ],
+      "assumptions": ["Supuesto 1"],
+      "risks": ["Riesgo 1"],
+      "total_estimated_hours": 0,
+      "hourly_rate": {hourly_rate},
+      "estimated_cost": 0
     }}
-  ],
-  "non_functional_requirements": [
-    {{
-      "id": "NFR1",
-      "description": "Requisito no funcional (rendimiento, seguridad, disponibilidad, etc.)"
-    }}
-  ],
-  "assumptions": [
-    "Supuesto 1",
-    "Supuesto 2"
-  ],
-  "risks": [
-    "Riesgo 1",
-    "Riesgo 2"
-  ],
-  "total_estimated_hours": 0,
-  "hourly_rate": %s,
-  "estimated_cost": 0
-}}
 
-IMPORTANTE:
-- Usa solo números para horas y costos (sin símbolos de moneda).
-- Todo el texto en español.
-- Si algo no está claro en la reunión, indícalo en 'assumptions' o 'risks'.
-""" % hourly_rate
+    IMPORTANTE:
+    1. Usa solo números para horas y costos.
+    2. En "required_skills", devuelve una lista de strings con las tecnologías inferidas o mencionadas (ej: ["React", "Django", "PostgreSQL", "AWS"]). Si no mencionan ninguna, infiere las más adecuadas para el tipo de proyecto.
+    """
 
     messages = [
         {
             "role": "system",
-            "content": "Eres un experto en levantamiento de requerimientos de proyectos de software."
+            "content": "Eres un experto en arquitectura de software y análisis de requisitos."
         },
         {
             "role": "user",
@@ -112,16 +104,29 @@ IMPORTANTE:
         },
         {
             "role": "user",
-            "content": f"TRANSCRIPCIÓN DE LA REUNIÓN:\n{transcript[:12000]}"
+            "content": f"TRANSCRIPCIÓN:\n{transcript[:12000]}"
         },
     ]
 
-    resp = client.chat.completions.create(
-        model=MODEL,
-        messages=messages,
-        response_format={"type": "json_object"},
-        temperature=0.2,
-    )
-    content = resp.choices[0].message.content
+    try:
+        resp = client.chat.completions.create(
+            model=MODEL,
+            messages=messages,
+            response_format={"type": "json_object"},
+            temperature=0.2,
+        )
+        content = resp.choices[0].message.content
+        return json.loads(content)
+        
+    except Exception as e:
+        print(f"Error llamando a OpenAI: {e}")
+        # Retorno de emergencia para no romper el backend
+        return {
+            "project_summary": "Error al procesar la reunión.",
+            "required_skills": ["Análisis Manual"],
+            "estimated_hours": 0,
+            "estimated_cost": 0,
+            "functional_requirements": []
+        }
     
-    return json.loads(content)
+

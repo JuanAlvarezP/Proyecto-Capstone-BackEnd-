@@ -268,8 +268,6 @@ RECORDATORIO FINAL: Si marcas "is_correct": true, el score_percentage NO puede s
                 result["is_correct"] = True
                 result["feedback"] = f"✅ Código funcional que resuelve correctamente el problema. {result.get('feedback', '')}"
             
-            # VALIDACIÓN ADICIONAL: Si el puntaje sigue siendo muy bajo pero is_correct es True
-            # forzar el puntaje mínimo (protección contra errores de la IA)
             if result.get("is_correct") and result.get("score_percentage", 0) < criteria["min_score"]:
                 result["score_percentage"] = criteria["min_score"]
             

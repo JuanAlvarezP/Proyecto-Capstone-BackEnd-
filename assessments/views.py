@@ -2,12 +2,17 @@ from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.utils import timezone
+from django.conf import settings
+import json
+import logging
 from .models import Assessment, Question, CandidateAnswer
 from .serializers import (
     AssessmentListSerializer, AssessmentDetailSerializer, AssessmentCreateSerializer,
     QuestionSerializer, QuestionCreateSerializer, CandidateAnswerSerializer
 )
 from .openai_service import OpenAIAssessmentService
+
+logger = logging.getLogger(__name__)
 
 
 class AssessmentViewSet(viewsets.ModelViewSet):
@@ -177,6 +182,108 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(assessment)
         return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def evaluate_quiz(self, request, pk=None):
+        """
+        Evalúa automáticamente un cuestionario comparando las respuestas 
+        del candidato con las respuestas correctas
+        POST /api/assessments/{id}/evaluate_quiz/
+        """
+        assessment = self.get_object()
+        
+        # Verificar que sea tipo QUIZ
+        if assessment.assessment_type != 'QUIZ':
+            return Response(
+                {'error': 'Este endpoint solo funciona con evaluaciones tipo QUIZ'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Obtener todas las preguntas del assessment
+        questions = assessment.questions.all()
+        
+        # Obtener todas las respuestas del candidato para este assessment
+        answers = CandidateAnswer.objects.filter(
+            question__assessment=assessment,
+            candidate=request.user
+        )
+        
+        total_points = 0
+        max_possible_points = 0
+        evaluated_count = 0
+        results_detail = []
+        
+        for question in questions:
+            max_possible_points += question.points
+            
+            try:
+                answer = answers.get(question=question)
+                
+                # Determinar si la respuesta es correcta según el tipo de pregunta
+                is_correct = False
+                
+                if question.question_type == 'MULTIPLE_CHOICE':
+                    # Para opción múltiple, comparar el índice seleccionado
+                    correct_index = int(question.correct_answer) if question.correct_answer.isdigit() else -1
+                    is_correct = answer.selected_option_index == correct_index
+                
+                elif question.question_type == 'TRUE_FALSE':
+                    # Para verdadero/falso, comparar directamente
+                    is_correct = answer.answer_text.lower() == question.correct_answer.lower()
+                
+                elif question.question_type == 'SHORT_ANSWER':
+                    # Para respuesta corta, comparar texto (case-insensitive)
+                    is_correct = answer.answer_text.lower().strip() == question.correct_answer.lower().strip()
+                
+                # Actualizar la respuesta
+                answer.is_correct = is_correct
+                answer.points_earned = question.points if is_correct else 0
+                answer.feedback = question.explanation if question.explanation else ''
+                answer.save()
+                
+                if is_correct:
+                    total_points += question.points
+                
+                evaluated_count += 1
+                
+                results_detail.append({
+                    'question_id': question.id,
+                    'question_text': question.question_text[:50] + '...',
+                    'is_correct': is_correct,
+                    'points_earned': answer.points_earned,
+                    'max_points': question.points
+                })
+                
+            except CandidateAnswer.DoesNotExist:
+                # Pregunta sin respuesta
+                results_detail.append({
+                    'question_id': question.id,
+                    'question_text': question.question_text[:50] + '...',
+                    'is_correct': False,
+                    'points_earned': 0,
+                    'max_points': question.points,
+                    'error': 'Sin respuesta'
+                })
+                continue
+        
+        # Calcular porcentaje
+        score_percentage = (total_points / max_possible_points * 100) if max_possible_points > 0 else 0
+        
+        # Actualizar el assessment
+        assessment.score = score_percentage
+        assessment.status = 'EVALUATED'
+        assessment.save()
+        
+        return Response({
+            'assessment_id': assessment.id,
+            'total_points': total_points,
+            'max_possible_points': max_possible_points,
+            'score_percentage': round(score_percentage, 2),
+            'evaluated_answers': evaluated_count,
+            'total_questions': questions.count(),
+            'passed': score_percentage >= assessment.passing_score,
+            'results_detail': results_detail
+        })
 
 
 class QuestionViewSet(viewsets.ModelViewSet):
@@ -296,3 +403,151 @@ class CandidateAnswerViewSet(viewsets.ModelViewSet):
                 {'error': f'Error al evaluar código: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+    
+    @action(detail=True, methods=['post'])
+    def evaluate_code_sandbox(self, request, pk=None):
+        """
+        Evalúa código usando resultados de sandbox + IA para calidad
+        POST /api/assessments/answers/{id}/evaluate_code_sandbox/
+
+        Body esperado:
+        {
+            "test_results": [
+                {
+                    "test_case": "Test 1",
+                    "input": "[1,2,3]",
+                    "expected_output": "6",
+                    "actual_output": "6",
+                    "passed": true,
+                    "execution_time_ms": 1.23,
+                    "error": null
+                }
+            ],
+            "total_tests": 3,
+            "passed_tests": 2,
+            "sandbox_success": true
+        }
+        """
+        answer = self.get_object()
+
+        # Obtener datos del sandbox
+        test_results = request.data.get('test_results', [])
+        total_tests = request.data.get('total_tests', 0)
+        passed_tests = request.data.get('passed_tests', 0)
+        sandbox_success = request.data.get('sandbox_success', False)
+
+        if not sandbox_success or total_tests == 0:
+            # Si el sandbox falló, usar evaluación tradicional con IA
+            return self.evaluate_code(request, pk)
+
+        # CALCULAR SCORE BASADO EN TESTS (70% funcionalidad)
+        functionality_score = (passed_tests / total_tests) * 70
+
+        # Determinar si el código es correcto (pasa todos los tests)
+        is_correct = passed_tests == total_tests
+
+        # USAR IA SOLO PARA EVALUAR CALIDAD (30%)
+        quality_score = 0
+        ai_quality_feedback = ""
+
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+            # Prompt simplificado - SOLO calidad, NO funcionalidad
+            quality_prompt = f"""Evalúa SOLO la CALIDAD del siguiente código.
+
+NO evalúes si funciona (ya se probó con tests reales).
+Solo evalúa:
+1. Legibilidad (¿es fácil de entender?)
+2. Eficiencia (¿usa buen algoritmo?)
+3. Buenas prácticas (¿sigue convenciones?)
+
+Da un puntaje de 0-30 (30 = excelente calidad).
+
+Código:
+```
+{answer.code_answer}
+```
+
+Responde en JSON:
+{{
+    "quality_score": <número 0-30>,
+    "quality_feedback": "<feedback breve sobre calidad>",
+    "strengths": ["punto fuerte 1", "punto fuerte 2"],
+    "improvements": ["sugerencia 1", "sugerencia 2"]
+}}
+"""
+
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Eres un evaluador experto de calidad de código."},
+                    {"role": "user", "content": quality_prompt}
+                ],
+                temperature=0.6,
+                response_format={"type": "json_object"}
+            )
+
+            quality_result = json.loads(response.choices[0].message.content)
+            quality_score = quality_result.get('quality_score', 15)
+            ai_quality_feedback = quality_result.get('quality_feedback', '')
+
+        except Exception as e:
+            logger.error(f"Error al evaluar calidad con IA: {e}")
+            # Si falla IA, dar puntaje promedio de calidad
+            quality_score = 15 if is_correct else 10
+            ai_quality_feedback = "Calidad no evaluada por IA (error técnico)."
+
+        # SCORE FINAL = Funcionalidad (tests) + Calidad (IA)
+        final_score = functionality_score + quality_score
+
+        # Garantizar mínimos
+        if is_correct and final_score < 70:
+            final_score = 70  # Mínimo 70% si pasa todos los tests
+
+        # Generar feedback combinado
+        feedback_parts = []
+
+        # 1. Resultados de tests
+        feedback_parts.append(f"🔒 **Evaluación con Sandbox (ejecución real)**\n")
+        feedback_parts.append(f"✅ Tests pasados: {passed_tests}/{total_tests}\n\n")
+
+        for idx, test in enumerate(test_results, 1):
+            icon = "✅" if test.get('passed') else "❌"
+            feedback_parts.append(f"{icon} Test {idx}: {test.get('test_case', f'Test {idx}')}\n")
+            feedback_parts.append(f"   Input: {test.get('input')}\n")
+            feedback_parts.append(f"   Esperado: {test.get('expected_output')}\n")
+            feedback_parts.append(f"   Obtenido: {test.get('actual_output')}\n")
+            if test.get('error'):
+                feedback_parts.append(f"   Error: {test.get('error')}\n")
+            feedback_parts.append("\n")
+
+        # 2. Evaluación de calidad por IA
+        if ai_quality_feedback:
+            feedback_parts.append(f"\n🤖 **Evaluación de Calidad (IA)**\n")
+            feedback_parts.append(f"{ai_quality_feedback}\n")
+
+        # 3. Resumen
+        if is_correct:
+            feedback_parts.append(f"\n🎉 **¡Excelente!** Tu código pasó todos los tests.\n")
+        else:
+            feedback_parts.append(f"\n⚠️ **Atención:** Tu código no pasó todos los tests.\n")
+
+        feedback_parts.append(f"\n📊 **Desglose de puntaje:**\n")
+        feedback_parts.append(f"- Funcionalidad (tests): {functionality_score:.1f}/70\n")
+        feedback_parts.append(f"- Calidad (código): {quality_score:.1f}/30\n")
+        feedback_parts.append(f"- **Total: {final_score:.1f}/100**\n")
+
+        combined_feedback = "".join(feedback_parts)
+
+        # Actualizar respuesta
+        answer.is_correct = is_correct
+        answer.points_earned = round(final_score)
+        answer.feedback = combined_feedback
+        answer.test_results = test_results  # Guardar los resultados de los tests
+        answer.save()
+
+        # Serializar y retornar
+        serializer = self.get_serializer(answer)
+        return Response(serializer.data)

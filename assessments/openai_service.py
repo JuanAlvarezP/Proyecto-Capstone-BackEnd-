@@ -81,7 +81,7 @@ Reglas:
     
     def generate_coding_challenges(self, topic, difficulty="MEDIUM", num_challenges=3, language="python"):
         """
-        Genera desafíos de código práctico
+        Genera desafíos de código práctico con test_cases automáticos para sandbox
         
         Args:
             topic: Tema técnico
@@ -90,7 +90,7 @@ Reglas:
             language: Lenguaje de programación (python, javascript, java, etc.)
             
         Returns:
-            Lista de diccionarios con desafíos de código
+            Lista de diccionarios con desafíos de código y test_cases
         """
         difficulty_map = {
             "EASY": "básico, sintaxis fundamental",
@@ -98,21 +98,50 @@ Reglas:
             "HARD": "avanzado, optimización y patrones complejos"
         }
         
+        # Ejemplos de sintaxis según lenguaje
+        language_examples = {
+            "python": {
+                "snippet": "def solution(param):\\n    # Tu código aquí\\n    pass",
+                "input_example": '"[1, 2, 3]"',
+                "output_example": '"6"',
+                "note": "Para arrays usa JSON string: [1,2,3], para strings usa comillas escapadas"
+            },
+            "javascript": {
+                "snippet": "function solution(param) {\\n  // Tu código aquí\\n}",
+                "input_example": '"[1, 2, 3]"',
+                "output_example": '"6"',
+                "note": "Para arrays usa JSON string: [1,2,3], para strings usa comillas escapadas"
+            },
+            "java": {
+                "snippet": "public class Solution {\\n  public static int solution(int[] param) {\\n    // Tu código aquí\\n    return 0;\\n  }\\n}",
+                "input_example": '"[1, 2, 3]"',
+                "output_example": '"6"',
+                "note": "Para arrays usa JSON string: [1,2,3], para strings usa comillas escapadas"
+            }
+        }
+        
+        lang_info = language_examples.get(language.lower(), language_examples["python"])
+        
         prompt = f"""Genera {num_challenges} desafíos de programación en {language} sobre {topic} de nivel {difficulty_map.get(difficulty, 'intermedio')}.
 
-IMPORTANTE: Responde ÚNICAMENTE con un JSON válido.
+🎯 OBJETIVO: Crear desafíos educativos con test_cases que se ejecutarán en un SANDBOX REAL.
+
+IMPORTANTE: Responde ÚNICAMENTE con un JSON válido, sin texto adicional.
 
 Formato JSON requerido:
 {{
   "challenges": [
     {{
-      "question_text": "Descripción del problema a resolver",
+      "question_text": "Descripción clara del problema a resolver",
       "question_type": "CODE",
       "programming_language": "{language}",
-      "code_snippet": "# Plantilla inicial del código\\ndef solution():\\n    pass",
+      "code_snippet": "{lang_info['snippet']}",
       "test_cases": [
-        {{"input": "datos de entrada", "expected_output": "salida esperada", "description": "Caso 1"}},
-        {{"input": "otros datos", "expected_output": "otra salida", "description": "Caso 2"}}
+        {{
+          "description": "Descripción del caso de prueba",
+          "input": "STRING JSON con los parámetros",
+          "expected_output": "STRING JSON con el resultado esperado"
+        }}
       ],
       "explanation": "Explicación de la solución óptima",
       "points": 20
@@ -120,12 +149,87 @@ Formato JSON requerido:
   ]
 }}
 
-Reglas:
-- Incluye al menos 3 test cases por desafío
-- El code_snippet debe tener una plantilla inicial útil
-- Los test cases deben cubrir casos normales, edge cases
-- Explicación debe incluir la complejidad temporal y espacial
-- Nivel: {difficulty_map.get(difficulty)}
+🔴 REGLAS CRÍTICAS PARA TEST_CASES (muy importante):
+
+1. **Cantidad**: Genera MÍNIMO 4 test_cases, IDEAL 5-6 test_cases por desafío
+
+2. **Cobertura**: Los test_cases DEBEN cubrir:
+   - ✅ Caso básico/feliz (entrada típica)
+   - ✅ Caso edge (array vacío, string vacío, null, 0, etc.)
+   - ✅ Caso con múltiples elementos
+   - ✅ Caso límite (números grandes, strings largos)
+   - ✅ Caso especial del dominio del problema
+
+3. **Formato de input y expected_output**:
+   - AMBOS deben ser STRINGS JSON válidos
+   - Para un parámetro: {lang_info['input_example']}
+   - Para múltiples parámetros: usar array JSON: "[5, 10]" o "[\\"hello\\", 3]"
+   - Para números: "42" o "3.14"
+   - Para strings: "\\"texto\\"" (con escapes)
+   - Para arrays: "[1, 2, 3]"
+   - Para booleanos: "true" o "false"
+   - Para null: "null"
+
+4. **Nota para {language}**: {lang_info['note']}
+
+5. **code_snippet**: Debe ser una plantilla inicial útil pero sin resolver el problema
+
+6. **Problemas realistas**: Crea desafíos educativos, prácticos y relevantes para {topic}
+
+EJEMPLO CORRECTO (JavaScript):
+{{
+  "challenges": [
+    {{
+      "question_text": "Crea una función que sume todos los números pares de un array",
+      "question_type": "CODE",
+      "programming_language": "JavaScript",
+      "code_snippet": "function sumaPares(numeros) {{\\n  // Tu código aquí\\n}}",
+      "test_cases": [
+        {{
+          "description": "Array con números mixtos",
+          "input": "[1, 2, 3, 4, 5, 6]",
+          "expected_output": "12"
+        }},
+        {{
+          "description": "Array vacío",
+          "input": "[]",
+          "expected_output": "0"
+        }},
+        {{
+          "description": "Solo números impares",
+          "input": "[1, 3, 5, 7]",
+          "expected_output": "0"
+        }},
+        {{
+          "description": "Solo números pares",
+          "input": "[2, 4, 6, 8]",
+          "expected_output": "20"
+        }},
+        {{
+          "description": "Array con un solo elemento par",
+          "input": "[10]",
+          "expected_output": "10"
+        }},
+        {{
+          "description": "Array con números negativos",
+          "input": "[-4, -2, 1, 3]",
+          "expected_output": "-6"
+        }}
+      ],
+      "explanation": "La solución óptima usa filter() para números pares y reduce() para sumar. Complejidad O(n) temporal, O(1) espacial.",
+      "points": 20
+    }}
+  ]
+}}
+
+⚠️ VERIFICACIÓN FINAL:
+- Cada test_case tiene "description", "input" (string JSON), "expected_output" (string JSON)
+- Los valores de input y expected_output están entre comillas y son strings JSON válidos
+- Hay al menos 4-6 test_cases por desafío
+- Los test_cases cubren casos normales, edge cases y casos límite
+- El nivel de dificultad es {difficulty_map.get(difficulty)}
+
+Ahora genera los {num_challenges} desafíos sobre {topic} en {language}:
 """
         
         try:

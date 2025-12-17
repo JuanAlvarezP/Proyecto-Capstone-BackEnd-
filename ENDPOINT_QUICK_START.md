@@ -67,20 +67,20 @@ async function evaluateCodeWithSandbox(answerId, sandboxResults) {
   const response = await fetch(
     `http://localhost:8000/api/assessments/answers/${answerId}/evaluate_code_sandbox/`,
     {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${yourJwtToken}`
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${yourJwtToken}`,
       },
       body: JSON.stringify({
         test_results: sandboxResults.test_results,
         total_tests: sandboxResults.total_tests,
         passed_tests: sandboxResults.passed_tests,
-        sandbox_success: sandboxResults.sandbox_success
-      })
+        sandbox_success: sandboxResults.sandbox_success,
+      }),
     }
   );
-  
+
   const data = await response.json();
   return data;
 }
@@ -89,7 +89,7 @@ async function evaluateCodeWithSandbox(answerId, sandboxResults) {
 ### Ejemplo con Axios
 
 ```javascript
-import axios from 'axios';
+import axios from "axios";
 
 const evaluateCodeWithSandbox = async (answerId, sandboxResults) => {
   try {
@@ -99,18 +99,18 @@ const evaluateCodeWithSandbox = async (answerId, sandboxResults) => {
         test_results: sandboxResults.test_results,
         total_tests: sandboxResults.total_tests,
         passed_tests: sandboxResults.passed_tests,
-        sandbox_success: sandboxResults.sandbox_success
+        sandbox_success: sandboxResults.sandbox_success,
       },
       {
         headers: {
-          'Authorization': `Bearer ${yourJwtToken}`
-        }
+          Authorization: `Bearer ${yourJwtToken}`,
+        },
       }
     );
-    
+
     return data;
   } catch (error) {
-    console.error('Error evaluando código:', error.response?.data);
+    console.error("Error evaluando código:", error.response?.data);
     throw error;
   }
 };

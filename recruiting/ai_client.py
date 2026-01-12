@@ -54,7 +54,6 @@ def analyze_meeting_transcript(transcript: str, hourly_rate: float):
     Lee el transcript de la reunión y devuelve el análisis con skills.
     """
     
-    # He agregado 'required_skills' al JSON y una instrucción clara abajo.
     prompt = f"""
     Eres un analista de requisitos y arquitecto de software experto.
     
@@ -81,6 +80,7 @@ def analyze_meeting_transcript(transcript: str, hourly_rate: float):
           "description": "Requisito no funcional"
         }}
       ],
+      "project_title": "Nombre sugerido para el proyecto",
       "assumptions": ["Supuesto 1"],
       "risks": ["Riesgo 1"],
       "total_estimated_hours": 0,

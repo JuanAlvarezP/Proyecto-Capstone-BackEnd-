@@ -107,7 +107,6 @@ class ChangePasswordSerializer(serializers.Serializer):
             raise serializers.ValidationError("Las contraseñas nuevas no coinciden.")
         return attrs       
     
-# ...existing code...
 
 class UserUpdateSerializer(serializers.ModelSerializer):
     """Serializer para actualizar el perfil del usuario autenticado."""
@@ -126,3 +125,31 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         if User.objects.exclude(pk=user.pk).filter(email=value).exists():
             raise serializers.ValidationError("Este email ya está en uso.")
         return value
+
+
+class AdminUserSerializer(serializers.ModelSerializer):
+    """Serializer para que administradores gestionen usuarios (incluyendo permisos)."""
+    password = serializers.CharField(write_only=True, required=False, min_length=8)
+    
+    class Meta:
+        model = User
+        fields = ["id", "username", "email", "first_name", "last_name", 
+                  "is_staff", "is_active", "is_superuser", "password", "date_joined"]
+        read_only_fields = ["id", "date_joined"]
+        extra_kwargs = {
+            "email": {"required": False},
+            "password": {"required": False}
+        }
+    
+    def update(self, instance, validated_data):
+        # Si se proporciona nueva contraseña, actualizarla
+        password = validated_data.pop('password', None)
+        if password:
+            instance.set_password(password)
+        
+        # Actualizar otros campos
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
+        instance.save()
+        return instance

@@ -1,8 +1,31 @@
-from rest_framework import generics, permissions, status
+from rest_framework import generics, permissions, status, viewsets
 from rest_framework.response import Response
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.models import User
-from .serializers import RegisterSerializer, MeSerializer, UserUpdateSerializer, ChangePasswordSerializer
+from .serializers import (
+    RegisterSerializer, MeSerializer, UserUpdateSerializer, 
+    ChangePasswordSerializer, AdminUserSerializer
+)
+
+
+class UserViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet para que los administradores gestionen usuarios.
+    - GET /api/accounts/users/ - Listar todos los usuarios
+    - POST /api/accounts/users/ - Crear nuevo usuario
+    - GET /api/accounts/users/{id}/ - Ver detalle de un usuario
+    - PUT/PATCH /api/accounts/users/{id}/ - Actualizar usuario
+    - DELETE /api/accounts/users/{id}/ - Eliminar usuario
+    """
+    queryset = User.objects.all().order_by('-date_joined')
+    permission_classes = [permissions.IsAdminUser]
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return RegisterSerializer
+        elif self.action in ['update', 'partial_update']:
+            return AdminUserSerializer
+        return MeSerializer
 
 
 class RegisterView(generics.CreateAPIView):

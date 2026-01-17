@@ -467,3 +467,225 @@ RECORDATORIO FINAL: Si marcas "is_correct": true, el score_percentage NO puede s
             
         except Exception as e:
             raise Exception(f"Error al evaluar código con OpenAI: {str(e)}")
+    
+    def analyze_application_for_assessment(self, application_id):
+        """
+        Analiza una aplicación (candidato + proyecto) y sugiere parámetros para crear una evaluación
+        
+        Args:
+            application_id: ID de la Application a analizar
+            
+        Returns:
+            Dict con sugerencias para crear evaluación técnica
+        """
+        from recruiting.models import Application
+        from projects.models import Project
+        from django.contrib.auth.models import User
+        import datetime
+        
+        try:
+            # 1. Obtener la aplicación
+            application = Application.objects.select_related('candidate', 'project').get(id=application_id)
+            project = application.project
+            candidate = application.candidate
+            
+            # 2. Extraer información relevante
+            required_skills = project.required_skills if hasattr(project, 'required_skills') else []
+            extracted_data = application.extracted if application.extracted else {}
+            candidate_skills = extracted_data.get('skills', [])
+            experience_years = extracted_data.get('experience_years', 0)
+            
+            # Obtener texto del CV (primeros 500 caracteres)
+            cv_preview = ""
+            if application.parsed_text:
+                cv_preview = application.parsed_text[:500]
+            
+            # 3. Construir prompt para OpenAI
+            prompt = f"""Eres un experto en recursos humanos técnicos. Analiza la siguiente información y sugiere parámetros óptimos para una evaluación técnica.
+
+PROYECTO:
+- Título: {project.title}
+- Descripción: {project.description[:200] if project.description else 'No disponible'}
+- Skills requeridos: {', '.join(required_skills) if required_skills else 'No especificados'}
+- Prioridad: {project.priority if hasattr(project, 'priority') else 'Media'}
+
+CANDIDATO:
+- Username: {candidate.username}
+- Años de experiencia detectados: {experience_years}
+- Skills del CV: {', '.join(candidate_skills) if candidate_skills else 'No detectados'}
+- Match score con proyecto: {application.match_score}%
+- Resumen CV: {cv_preview if cv_preview else 'No disponible'}
+
+CONTEXTO ADICIONAL:
+- Estado aplicación: {application.status}
+- Fecha aplicación: {application.created_at.strftime('%Y-%m-%d') if application.created_at else 'N/A'}
+
+INSTRUCCIONES:
+Basándote en el análisis anterior, sugiere:
+1. **Título descriptivo** para la evaluación (máx 100 caracteres)
+2. **Descripción breve** explicando enfoque (máx 200 caracteres)
+3. **Tipo de evaluación**: "QUIZ" (preguntas teóricas) o "CODING" (prueba de código)
+4. **Dificultad**: "EASY" (junior/básico), "MEDIUM" (mid-level/intermedio), "HARD" (senior/avanzado)
+5. **Tiempo en minutos**: entre 30-120 según complejidad
+6. **Score mínimo para aprobar**: entre 60-85%
+7. **Número de preguntas**: 5-15 (menos para CODING, más para QUIZ)
+8. **Lenguaje de programación** principal (si tipo es CODING)
+9. **Nivel de experiencia del candidato**: "junior", "intermediate", "senior"
+10. **Complejidad del proyecto**: "low", "medium", "high"
+11. **Skills detectados** más relevantes para esta evaluación
+
+CRITERIOS DE DECISIÓN:
+- Si match_score >= 80% → EASY (candidato califica bien)
+- Si match_score 60-79% → MEDIUM (candidato promedio)
+- Si match_score < 60% → HARD (evaluar más a fondo)
+- Si required_skills incluye lenguajes de programación → CODING
+- Si required_skills son principalmente soft skills o teóricos → QUIZ
+- Ajustar tiempo según dificultad: EASY=30-45min, MEDIUM=60min, HARD=90-120min
+- Score mínimo: EASY=65%, MEDIUM=70%, HARD=75%
+
+RESPONDE EN JSON con esta estructura EXACTA:
+{{
+  "suggested_title": "...",
+  "suggested_description": "...",
+  "suggested_type": "QUIZ",
+  "suggested_difficulty": "MEDIUM",
+  "suggested_time_minutes": 60,
+  "suggested_passing_score": 70,
+  "suggested_num_questions": 10,
+  "suggested_programming_language": "JavaScript",
+  "difficulty_reason": "Explicación de por qué esta dificultad es apropiada",
+  "time_reason": "Explicación de por qué este tiempo es adecuado",
+  "score_reason": "Explicación del score mínimo sugerido",
+  "type_reason": "Explicación de por qué QUIZ o CODING",
+  "detected_skills": ["skill1", "skill2", "skill3"],
+  "candidate_experience_level": "intermediate",
+  "project_complexity": "medium"
+}}"""
+
+            # 4. Llamar a OpenAI
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {
+                        "role": "system", 
+                        "content": "Eres un experto en recursos humanos técnicos especializado en crear evaluaciones. Respondes ÚNICAMENTE con JSON válido."
+                    },
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                response_format={"type": "json_object"}
+            )
+            
+            result = json.loads(response.choices[0].message.content)
+            
+            # Validar y normalizar resultado
+            result['application_id'] = application_id
+            result['analyzed_at'] = datetime.datetime.now().isoformat()
+            
+            return result
+            
+        except Application.DoesNotExist:
+            raise ValueError(f"Application {application_id} no encontrada")
+        except Exception as e:
+            # Si OpenAI falla, usar lógica de fallback
+            print(f"⚠️ OpenAI falló, usando fallback: {str(e)}")
+            return self._get_fallback_suggestions(application_id)
+    
+    def _get_fallback_suggestions(self, application_id):
+        """
+        Lógica de fallback si OpenAI no está disponible
+        Usa reglas heurísticas para generar sugerencias
+        """
+        from recruiting.models import Application
+        import datetime
+        
+        try:
+            application = Application.objects.select_related('candidate', 'project').get(id=application_id)
+            project = application.project
+            
+            # Determinar dificultad basada en match_score
+            if application.match_score >= 80:
+                difficulty = "EASY"
+                passing_score = 65
+                time_minutes = 30
+            elif application.match_score >= 60:
+                difficulty = "MEDIUM"
+                passing_score = 70
+                time_minutes = 60
+            else:
+                difficulty = "HARD"
+                passing_score = 75
+                time_minutes = 90
+            
+            # Determinar tipo basado en skills requeridos
+            required_skills = project.required_skills if hasattr(project, 'required_skills') else []
+            coding_keywords = ['react', 'python', 'java', 'javascript', 'node', 'django', 'angular', 
+                             'vue', 'php', 'ruby', 'go', 'rust', 'c++', 'c#', 'swift', 'kotlin']
+            has_coding = any(
+                any(keyword in str(skill).lower() for keyword in coding_keywords)
+                for skill in required_skills
+            )
+            
+            assessment_type = "CODING" if has_coding else "QUIZ"
+            num_questions = 5 if assessment_type == "CODING" else 10
+            
+            # Detectar lenguaje principal
+            programming_language = "JavaScript"
+            for skill in required_skills:
+                skill_lower = str(skill).lower()
+                if 'python' in skill_lower or 'django' in skill_lower:
+                    programming_language = "Python"
+                    break
+                elif 'java' in skill_lower and 'javascript' not in skill_lower:
+                    programming_language = "Java"
+                    break
+                elif 'react' in skill_lower or 'node' in skill_lower or 'javascript' in skill_lower:
+                    programming_language = "JavaScript"
+                    break
+            
+            # Determinar nivel de experiencia
+            extracted = application.extracted if application.extracted else {}
+            experience_years = extracted.get('experience_years', 0)
+            if experience_years < 2:
+                candidate_experience = "junior"
+            elif experience_years < 5:
+                candidate_experience = "intermediate"
+            else:
+                candidate_experience = "senior"
+            
+            # Complejidad del proyecto
+            if project.priority <= 2:
+                project_complexity = "high"
+            elif project.priority <= 3:
+                project_complexity = "medium"
+            else:
+                project_complexity = "low"
+            
+            # Detectar skills relevantes
+            detected_skills = required_skills[:5] if required_skills else ["No especificados"]
+            
+            return {
+                "suggested_title": f"Evaluación {project.title}",
+                "suggested_description": f"Evaluación técnica para proyecto {project.title} - Nivel {difficulty.lower()}",
+                "suggested_type": assessment_type,
+                "suggested_difficulty": difficulty,
+                "suggested_time_minutes": time_minutes,
+                "suggested_passing_score": passing_score,
+                "suggested_num_questions": num_questions,
+                "suggested_programming_language": programming_language if assessment_type == "CODING" else None,
+                "difficulty_reason": f"Match score de {application.match_score}% sugiere nivel {difficulty}",
+                "time_reason": f"Dificultad {difficulty} requiere aproximadamente {time_minutes} minutos",
+                "score_reason": f"Score mínimo de {passing_score}% apropiado para nivel {difficulty}",
+                "type_reason": f"{'Skills de programación detectados' if has_coding else 'Skills principalmente teóricos'} sugieren {assessment_type}",
+                "detected_skills": detected_skills,
+                "candidate_experience_level": candidate_experience,
+                "project_complexity": project_complexity,
+                "application_id": application_id,
+                "analyzed_at": datetime.datetime.now().isoformat(),
+                "fallback_used": True
+            }
+            
+        except Application.DoesNotExist:
+            raise ValueError(f"Application {application_id} no encontrada")
+        except Exception as e:
+            raise Exception(f"Error en fallback: {str(e)}")

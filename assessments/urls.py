@@ -8,5 +8,10 @@ router.register(r'questions', QuestionViewSet, basename='question')
 router.register(r'answers', CandidateAnswerViewSet, basename='answer')
 
 urlpatterns = [
+    # Ruta especial para análisis de aplicación con ID en URL
+    path('analyze-application/<int:app_id>/', 
+         AssessmentViewSet.as_view({'post': 'analyze_application_url'}), 
+         name='analyze-application-url'),
     path('', include(router.urls)),
 ]
+

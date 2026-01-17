@@ -114,3 +114,37 @@ class AssessmentCreateSerializer(serializers.ModelSerializer):
             'status', 'created_at'
         ]
         read_only_fields = ['id', 'status', 'created_at']
+
+
+class ApplicationAnalysisInputSerializer(serializers.Serializer):
+    """Serializer para validar input del análisis de aplicación"""
+    application_id = serializers.IntegerField(required=True, help_text="ID de la aplicación a analizar")
+
+
+class ApplicationAnalysisOutputSerializer(serializers.Serializer):
+    """Serializer para la respuesta del análisis de aplicación"""
+    suggested_title = serializers.CharField(max_length=200)
+    suggested_description = serializers.CharField(max_length=500)
+    suggested_type = serializers.ChoiceField(choices=['QUIZ', 'CODING'])
+    suggested_difficulty = serializers.ChoiceField(choices=['EASY', 'MEDIUM', 'HARD'])
+    suggested_time_minutes = serializers.IntegerField(min_value=15, max_value=180)
+    suggested_passing_score = serializers.FloatField(min_value=50, max_value=100)
+    suggested_num_questions = serializers.IntegerField(min_value=1, max_value=20)
+    suggested_programming_language = serializers.CharField(max_length=50, allow_null=True, required=False)
+    
+    # Razones del análisis
+    difficulty_reason = serializers.CharField()
+    time_reason = serializers.CharField()
+    score_reason = serializers.CharField()
+    type_reason = serializers.CharField()
+    
+    # Metadata del análisis
+    detected_skills = serializers.ListField(child=serializers.CharField())
+    candidate_experience_level = serializers.ChoiceField(choices=['junior', 'intermediate', 'senior'])
+    project_complexity = serializers.ChoiceField(choices=['low', 'medium', 'high'])
+    
+    # Info adicional
+    application_id = serializers.IntegerField()
+    analyzed_at = serializers.CharField()
+    fallback_used = serializers.BooleanField(default=False, required=False)
+

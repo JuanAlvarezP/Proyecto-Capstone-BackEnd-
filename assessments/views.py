@@ -8,7 +8,8 @@ import logging
 from .models import Assessment, Question, CandidateAnswer
 from .serializers import (
     AssessmentListSerializer, AssessmentDetailSerializer, AssessmentCreateSerializer,
-    QuestionSerializer, QuestionCreateSerializer, CandidateAnswerSerializer
+    QuestionSerializer, QuestionCreateSerializer, CandidateAnswerSerializer,
+    ApplicationAnalysisInputSerializer, ApplicationAnalysisOutputSerializer
 )
 from .openai_service import OpenAIAssessmentService
 
@@ -301,6 +302,94 @@ class AssessmentViewSet(viewsets.ModelViewSet):
             'passed': score_percentage >= assessment.passing_score,
             'results_detail': results_detail
         })
+    
+    def _analyze_application_logic(self, application_id):
+        """Lógica compartida para analizar aplicación"""
+        try:
+            # Usar el servicio OpenAI para analizar
+            ai_service = OpenAIAssessmentService()
+            analysis_result = ai_service.analyze_application_for_assessment(application_id)
+            
+            # Reestructurar para match con formato requerido
+            response_data = {
+                "suggested_title": analysis_result.get('suggested_title'),
+                "suggested_description": analysis_result.get('suggested_description'),
+                "suggested_type": analysis_result.get('suggested_type'),
+                "suggested_difficulty": analysis_result.get('suggested_difficulty'),
+                "suggested_time_minutes": analysis_result.get('suggested_time_minutes'),
+                "suggested_passing_score": analysis_result.get('suggested_passing_score'),
+                "suggested_num_questions": analysis_result.get('suggested_num_questions'),
+                "suggested_programming_language": analysis_result.get('suggested_programming_language'),
+                "analysis_reasoning": {
+                    "difficulty_reason": analysis_result.get('difficulty_reason', ''),
+                    "time_reason": analysis_result.get('time_reason', ''),
+                    "score_reason": analysis_result.get('score_reason', ''),
+                    "type_reason": analysis_result.get('type_reason', '')
+                },
+                "detected_skills": analysis_result.get('detected_skills', []),
+                "candidate_experience_level": analysis_result.get('candidate_experience_level'),
+                "project_complexity": analysis_result.get('project_complexity'),
+                "analyzed_at": analysis_result.get('analyzed_at')
+            }
+            
+            # Agregar flag de fallback si existe
+            if analysis_result.get('fallback_used'):
+                response_data['fallback_used'] = True
+            
+            # Validar output
+            output_serializer = ApplicationAnalysisOutputSerializer(data=analysis_result)
+            if not output_serializer.is_valid():
+                logger.warning(f"Output validation failed: {output_serializer.errors}")
+            
+            logger.info(f"✅ Análisis completado para application_id={application_id}")
+            return Response(response_data, status=status.HTTP_200_OK)
+            
+        except ValueError as e:
+            # Application no encontrada
+            logger.error(f"Application not found: {str(e)}")
+            return Response(
+                {'error': 'Application not found', 'detail': str(e)},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            # Error general
+            logger.error(f"Error analyzing application: {str(e)}", exc_info=True)
+            return Response(
+                {'error': 'Error analyzing application', 'detail': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAdminUser], url_path='analyze-application')
+    def analyze_application_body(self, request):
+        """
+        Analiza una aplicación con ID en el body
+        POST /api/assessments/analyze-application/
+        Body: { "application_id": 123 }
+        """
+        input_serializer = ApplicationAnalysisInputSerializer(data=request.data)
+        if not input_serializer.is_valid():
+            return Response(
+                {'error': 'Datos inválidos', 'details': input_serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        application_id = input_serializer.validated_data['application_id']
+        return self._analyze_application_logic(application_id)
+    
+    def analyze_application_url(self, request, app_id=None):
+        """
+        Analiza una aplicación con ID en la URL (ruta manual en urls.py)
+        POST /api/assessments/analyze-application/{id}/
+        """
+        try:
+            application_id = int(app_id)
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'application_id debe ser un número entero'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return self._analyze_application_logic(application_id)
 
 
 class QuestionViewSet(viewsets.ModelViewSet):

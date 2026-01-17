@@ -23,7 +23,7 @@ class Application(models.Model):
     match_score = models.FloatField(default=0.0)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="SUBMITTED")
     created_at = models.DateTimeField(auto_now_add=True)
-    
+    ai_analysis = models.TextField(blank=True, null=True) #
     class Meta:
         unique_together = ("candidate", "project")  # 1 aplicación por proyecto
 

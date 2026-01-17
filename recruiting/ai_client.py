@@ -33,20 +33,62 @@ Nunca inventes datos. Si no existe, deja arrays vacíos o string vacío.
 Responde SOLO en JSON siguiendo el esquema.
 """
 
-def parse_cv_text(cv_text: str):
-    messages = [
-        {"role": "system", "content": SYSTEM_MESSAGE},
-        {"role": "user", "content": f"Esquema:\n{json.dumps(SCHEMA)}\n\nCV:\n{cv_text[:20000]}"}
-    ]
+def calculate_candidate_score(candidate_data, project_requirements):
+    """
+    Nueva función para calificar al candidato con pesos personalizados.
+    candidate_data: El JSON extraído del CV.
+    project_requirements: Requerimientos del proyecto (skills, descripción).
+    """
+    
+    system_message = """
+    Eres un experto en reclutamiento IT. Tu tarea es calificar la compatibilidad de un candidato.
+    Debes devolver un JSON con:
+    1. 'skills_score': (0-10) Qué tanto coinciden sus hard/soft skills.
+    2. 'experience_score': (0-10) Qué tan relevante es su historia laboral para este proyecto.
+    3. 'justification': Una breve explicación de por qué tiene esa nota.
+    """
+    
+    prompt = f"""
+    REQUERIMIENTOS DEL PROYECTO:
+    {project_requirements}
+
+    DATOS DEL CANDIDATO (Extraídos del CV):
+    {json.dumps(candidate_data)}
+
+    Calcula las notas basándote en la relevancia real, no solo en palabras clave.
+    """
 
     result = client.chat.completions.create(
         model=MODEL,
-        messages=messages,
-        response_format={"type": "json_object"},
-        temperature=0.1
+        messages=[
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": prompt}
+        ],
+        response_format={"type": "json_object"}
     )
+    
+    return json.loads(result.choices[0].message.content) #
 
-    content = result.choices[0].message.content
+def parse_cv_text(cv_text: str):
+    messages = [
+      {"role": "system", "content": SYSTEM_MESSAGE},
+      {"role": "user", "content": f"Esquema:\n{json.dumps(SCHEMA)}\n\nCV:\n{cv_text[:20000]}"}
+    ]
+    try:
+      result = client.chat.completions.create(
+          model=MODEL,
+          messages=messages,
+          response_format={"type": "json_object"},
+          temperature=0.1
+      )
+
+      content = result.choices[0].message.content
+      return json.loads(content)
+
+    except Exception as e:
+        print(f"❌ Error llamando a OpenAI: {e}")
+        # Si algo falla, devolvemos un diccionario vacío en lugar de None
+        return {}
 
     
 def analyze_meeting_transcript(transcript: str, hourly_rate: float):
@@ -54,7 +96,6 @@ def analyze_meeting_transcript(transcript: str, hourly_rate: float):
     Lee el transcript de la reunión y devuelve el análisis con skills.
     """
     
-    # He agregado 'required_skills' al JSON y una instrucción clara abajo.
     prompt = f"""
     Eres un analista de requisitos y arquitecto de software experto.
     
@@ -81,6 +122,7 @@ def analyze_meeting_transcript(transcript: str, hourly_rate: float):
           "description": "Requisito no funcional"
         }}
       ],
+      "project_title": "Nombre sugerido para el proyecto",
       "assumptions": ["Supuesto 1"],
       "risks": ["Riesgo 1"],
       "total_estimated_hours": 0,

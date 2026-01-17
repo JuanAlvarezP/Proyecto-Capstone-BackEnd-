@@ -43,14 +43,14 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         Body: {
             "topic": "Python avanzado",
             "num_questions": 10,  # Para QUIZ
-            "num_challenges": 3,  # Para CODING
+            "num_challenges": 1,  # Para CODING (siempre 1 desafío)
             "language": "es"  # o "en"
         }
         """
         assessment = self.get_object()
         topic = request.data.get('topic')
         num_questions = request.data.get('num_questions', 10)
-        num_challenges = request.data.get('num_challenges', 3)
+        num_challenges = request.data.get('num_challenges', 1)
         language = request.data.get('language', 'es')
         
         if not topic:
@@ -73,18 +73,24 @@ class AssessmentViewSet(viewsets.ModelViewSet):
                 )
                 
                 for idx, q_data in enumerate(questions_data):
+                    correct_answer_value = str(q_data.get('correct_answer', ''))
                     question = Question.objects.create(
                         assessment=assessment,
                         question_type=q_data.get('question_type', 'MULTIPLE_CHOICE'),
                         question_text=q_data['question_text'],
                         options=q_data.get('options', []),
-                        correct_answer=str(q_data.get('correct_answer', '')),
+                        correct_answer=correct_answer_value,
                         explanation=q_data.get('explanation', ''),
                         points=q_data.get('points', 10),
                         order=idx,
                         generated_by_ai=True,
                         ai_prompt=f"Topic: {topic}, Difficulty: {assessment.difficulty}"
                     )
+                    print(f"✅ Pregunta {idx+1} guardada:")
+                    print(f"   ID: {question.id}")
+                    print(f"   Texto: {question.question_text[:60]}...")
+                    print(f"   Opciones: {question.options}")
+                    print(f"   correct_answer: '{question.correct_answer}' (tipo: {type(question.correct_answer).__name__})")
                     generated_questions.append(question)
                     
             elif assessment.assessment_type == 'CODING':
@@ -224,8 +230,19 @@ class AssessmentViewSet(viewsets.ModelViewSet):
                 
                 if question.question_type == 'MULTIPLE_CHOICE':
                     # Para opción múltiple, comparar el índice seleccionado
-                    correct_index = int(question.correct_answer) if question.correct_answer.isdigit() else -1
-                    is_correct = answer.selected_option_index == correct_index
+                    # El frontend puede enviar answer_text (string "0", "1", etc.) o selected_option_index (int)
+                    correct_answer_str = str(question.correct_answer).strip()
+                    user_answer_str = str(answer.answer_text).strip() if answer.answer_text else str(answer.selected_option_index)
+                    
+                    is_correct = user_answer_str == correct_answer_str
+                    
+                    print(f"\n🔍 Evaluando pregunta {question.id}:")
+                    print(f"   Pregunta: {question.question_text[:60]}...")
+                    print(f"   Opciones: {question.options}")
+                    print(f"   Respuesta correcta (backend): '{correct_answer_str}'")
+                    print(f"   Respuesta usuario (answer_text): '{answer.answer_text}'")
+                    print(f"   Respuesta usuario (selected_option_index): {answer.selected_option_index}")
+                    print(f"   ¿Es correcta?: {is_correct}")
                 
                 elif question.question_type == 'TRUE_FALSE':
                     # Para verdadero/falso, comparar directamente
@@ -318,12 +335,69 @@ class CandidateAnswerViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
-        """Filtrar según tipo de usuario"""
+        """Filtrar según tipo de usuario y query params"""
         qs = super().get_queryset()
+        
+        # Obtener parámetros de filtrado
+        assessment_id = self.request.query_params.get('assessment')
+        question_id = self.request.query_params.get('question')
+        
+        print(f"\n🔍 FILTRADO DE RESPUESTAS:")
+        print(f"   Assessment ID solicitado: {assessment_id}")
+        print(f"   Question ID solicitado: {question_id}")
+        print(f"   Usuario: {self.request.user.username}")
+        
+        # DEBUG: Mostrar estado antes de filtrar
+        if assessment_id:
+            # Verificar cuántas respuestas existen en total para este usuario
+            total_answers = CandidateAnswer.objects.filter(candidate=self.request.user).count() if not self.request.user.is_staff else CandidateAnswer.objects.all().count()
+            print(f"   📊 Total respuestas en DB: {total_answers}")
+            
+            # Verificar cuántas preguntas tiene este assessment
+            from .models import Assessment
+            try:
+                assessment = Assessment.objects.get(id=assessment_id)
+                questions_count = assessment.questions.count()
+                print(f"   📋 Preguntas en assessment {assessment_id}: {questions_count}")
+                
+                # Ver si hay respuestas para esas preguntas
+                question_ids = list(assessment.questions.values_list('id', flat=True))
+                print(f"   🔑 IDs de preguntas: {question_ids}")
+                
+                answers_for_questions = CandidateAnswer.objects.filter(question_id__in=question_ids)
+                if self.request.user.is_staff:
+                    answers_count = answers_for_questions.count()
+                    print(f"   💬 Respuestas existentes para esas preguntas (todos los usuarios): {answers_count}")
+                else:
+                    answers_count = answers_for_questions.filter(candidate=self.request.user).count()
+                    print(f"   💬 Respuestas existentes para esas preguntas (tu usuario): {answers_count}")
+                    
+            except Assessment.DoesNotExist:
+                print(f"   ❌ Assessment {assessment_id} no existe")
+        
+        # Filtrar por assessment (a través de question__assessment)
+        if assessment_id:
+            qs = qs.filter(question__assessment_id=assessment_id)
+            print(f"   ✅ Filtrando por question__assessment_id={assessment_id}")
+        
+        # Filtrar por question
+        if question_id:
+            qs = qs.filter(question_id=question_id)
+            print(f"   ✅ Filtrando por question_id={question_id}")
         
         if not self.request.user.is_staff:
             # Candidatos solo ven sus propias respuestas
             qs = qs.filter(candidate=self.request.user)
+            print(f"   ✅ Filtrando por candidate={self.request.user.id}")
+        
+        # Log de resultados
+        results = list(qs.values_list('id', 'question__assessment_id', 'question_id', 'candidate__username'))
+        print(f"   📊 Respuestas encontradas: {len(results)}")
+        for answer_id, assessment, question, username in results[:5]:  # Mostrar máximo 5
+            print(f"      - Answer ID={answer_id}, Assessment={assessment}, Question={question}, Usuario={username}")
+        if len(results) > 5:
+            print(f"      ... y {len(results) - 5} más")
+        print()
             
         return qs
     
@@ -373,24 +447,85 @@ class CandidateAnswerViewSet(viewsets.ModelViewSet):
             
             # Obtener el score
             score_percentage = evaluation.get('score_percentage', 0)
+            is_correct = evaluation.get('is_correct', False)
             
-            # Validación adicional: si todos los tests pasaron, asegurar puntaje mínimo
+            # 🔥 SISTEMA DE VALIDACIÓN ULTRA-ROBUSTO CON 5 CAPAS 🔥
             test_results = evaluation.get('test_results', [])
-            if test_results:
-                all_passed = all(t.get('passed', False) for t in test_results)
-                if all_passed:
-                    # Puntajes mínimos por dificultad cuando TODOS los tests pasan
-                    min_scores = {'EASY': 80, 'MEDIUM': 75, 'HARD': 70}
-                    min_score = min_scores.get(difficulty, 75)
-                    
-                    if score_percentage < min_score:
-                        score_percentage = min_score
-                        evaluation['score_percentage'] = min_score
-                        evaluation['feedback'] = f"✅ TODOS los tests pasaron correctamente. {evaluation.get('feedback', '')}"
+            min_scores = {'EASY': 80, 'MEDIUM': 75, 'HARD': 70}
+            min_score = min_scores.get(difficulty, 75)
             
-            # Actualizar respuesta con evaluación
-            answer.is_correct = evaluation.get('is_correct', False)
-            answer.points_earned = (score_percentage / 100) * answer.question.points
+            # Calcular cuántos tests pasaron
+            passed_count = sum(1 for t in test_results if t.get('passed', False))
+            total_count = len(test_results) if test_results else 0
+            all_tests_passed = (total_count > 0 and passed_count == total_count)
+            pass_rate = (passed_count / total_count * 100) if total_count > 0 else 0
+            
+            print(f"\n🔍 DEBUG VALIDACIÓN VIEWS:")
+            print(f"   Score original de OpenAI: {score_percentage}%")
+            print(f"   is_correct: {is_correct}")
+            print(f"   Tests pasados: {passed_count}/{total_count} ({pass_rate:.0f}%)")
+            print(f"   Score mínimo para {difficulty}: {min_score}%")
+            
+            # 🔴 CAPA 1: Si is_correct es True, FORZAR puntaje mínimo
+            if is_correct:
+                if score_percentage < min_score:
+                    print(f"   ⚠️ CAPA 1: is_correct=True pero score={score_percentage}% < {min_score}%")
+                    print(f"   ✅ CORRECCIÓN: Forzando score a {min_score}%")
+                    score_percentage = min_score
+                    evaluation['score_percentage'] = min_score
+            
+            # 🔴 CAPA 2: Si TODOS los tests pasaron, FORZAR puntaje mínimo
+            if all_tests_passed:
+                if score_percentage < min_score:
+                    print(f"   ⚠️ CAPA 2: Todos los tests pasaron pero score={score_percentage}% < {min_score}%")
+                    print(f"   ✅ CORRECCIÓN: Forzando score a {min_score}%")
+                    score_percentage = min_score
+                    evaluation['score_percentage'] = min_score
+                is_correct = True
+                evaluation['is_correct'] = True
+            
+            # 🔴 CAPA 3: Si 80%+ de tests pasaron, dar al menos 70%
+            if pass_rate >= 80 and score_percentage < 70:
+                print(f"   ⚠️ CAPA 3: {pass_rate:.0f}% tests pasaron pero score={score_percentage}%")
+                print(f"   ✅ CORRECCIÓN: Forzando score mínimo a 70%")
+                score_percentage = max(70, score_percentage)
+                evaluation['score_percentage'] = score_percentage
+            
+            # 🔴 CAPA 4: Verificación cruzada final
+            final_score = score_percentage
+            final_is_correct = is_correct
+            
+            if final_is_correct and final_score < min_score:
+                print(f"   ⚠️ CAPA 4: Inconsistencia detectada - is_correct={final_is_correct} pero score={final_score}%")
+                print(f"   ✅ CORRECCIÓN: Ajustando a {min_score}%")
+                final_score = min_score
+                evaluation['score_percentage'] = min_score
+            
+            if all_tests_passed and final_score < min_score:
+                print(f"   ⚠️ CAPA 4: Inconsistencia detectada - todos tests OK pero score={final_score}%")
+                print(f"   ✅ CORRECCIÓN: Ajustando a {min_score}%")
+                final_score = min_score
+                final_is_correct = True
+                evaluation['score_percentage'] = min_score
+                evaluation['is_correct'] = True
+            
+            # 🔴 CAPA 5: GARANTÍA ABSOLUTA - última verificación antes de guardar
+            if evaluation.get('is_correct', False) or all_tests_passed:
+                if final_score < min_score:
+                    print(f"   🚨 CAPA 5 - GARANTÍA ABSOLUTA:")
+                    print(f"   ⚠️ Score final {final_score}% es menor que mínimo {min_score}%")
+                    print(f"   ✅ FORZANDO score a {min_score}% (ÚLTIMA VERIFICACIÓN)")
+                    final_score = min_score
+                    final_is_correct = True
+                    evaluation['score_percentage'] = min_score
+                    evaluation['is_correct'] = True
+            
+            print(f"   ✅ Score final después de validaciones: {final_score}%")
+            print(f"   ✅ is_correct final: {final_is_correct}\n")
+            
+            # Actualizar respuesta con evaluación VALIDADA
+            answer.is_correct = final_is_correct
+            answer.points_earned = (final_score / 100) * answer.question.points
             answer.feedback = evaluation.get('feedback', '')
             answer.test_results = evaluation.get('test_results', {})
             answer.save()
@@ -435,6 +570,118 @@ class CandidateAnswerViewSet(viewsets.ModelViewSet):
         total_tests = request.data.get('total_tests', 0)
         passed_tests = request.data.get('passed_tests', 0)
         sandbox_success = request.data.get('sandbox_success', False)
+        use_backend_execution = request.data.get('use_backend_execution', False)
+        
+        # 🐍 Si el frontend solicita ejecución en backend (Python/Java)
+        if use_backend_execution:
+            programming_language = request.data.get('programming_language', 'python')
+            test_cases = request.data.get('test_cases', [])
+            code = request.data.get('code', answer.code_answer)
+            
+            print(f"\n🐍 EJECUTANDO CÓDIGO EN BACKEND ({programming_language.upper()})")
+            print(f"   Código a ejecutar: {code[:100]}...")
+            print(f"   Test cases: {len(test_cases)}")
+            
+            # Ejecutar código con Piston API
+            import requests
+            
+            test_results = []
+            passed_tests = 0
+            
+            # Mapeo de lenguajes a Piston
+            language_map = {
+                'python': 'python',
+                'javascript': 'javascript',
+                'java': 'java'
+            }
+            
+            piston_language = language_map.get(programming_language.lower(), 'python')
+            
+            for idx, test_case in enumerate(test_cases, 1):
+                test_input = test_case.get('input', '')
+                expected_output = test_case.get('expected_output', '')
+                description = test_case.get('description', f'Test {idx}')
+                
+                # Parsear el input - puede venir como array ["value"] o valor directo
+                # Si viene como ["value"], extraer solo el valor
+                try:
+                    import ast
+                    parsed_input = ast.literal_eval(test_input)
+                    # Si es una lista de un solo elemento, extraerlo
+                    if isinstance(parsed_input, list) and len(parsed_input) == 1:
+                        test_input = repr(parsed_input[0])
+                    elif isinstance(parsed_input, list):
+                        # Si es lista de múltiples elementos, mantenerlo como lista
+                        test_input = repr(parsed_input)
+                    else:
+                        test_input = repr(parsed_input)
+                except:
+                    # Si falla el parsing, usar el input tal cual
+                    pass
+                
+                # Construir código con test case
+                if programming_language.lower() == 'python':
+                    test_code = f"""{code}
+
+# Test case {idx}
+result = solution({test_input})
+print(result)
+"""
+                else:
+                    test_code = code  # Para otros lenguajes, ajustar según sea necesario
+                
+                try:
+                    # Llamar a Piston API
+                    piston_response = requests.post(
+                        'https://emkc.org/api/v2/piston/execute',
+                        json={
+                            'language': piston_language,
+                            'version': '*',
+                            'files': [{
+                                'content': test_code
+                            }]
+                        },
+                        timeout=10
+                    )
+                    
+                    piston_result = piston_response.json()
+                    actual_output = piston_result.get('run', {}).get('output', '').strip()
+                    error = piston_result.get('run', {}).get('stderr', '')
+                    
+                    # Comparar resultado
+                    passed = str(actual_output) == str(expected_output).strip('"')
+                    
+                    if passed:
+                        passed_tests += 1
+                    
+                    test_results.append({
+                        'test_case': description,
+                        'input': test_input,
+                        'expected_output': expected_output,
+                        'actual_output': actual_output if not error else None,
+                        'passed': passed,
+                        'execution_time_ms': 0,
+                        'error': error if error else None
+                    })
+                    
+                    print(f"   ✅ Test {idx}: {'PASÓ' if passed else 'FALLÓ'}")
+                    
+                except Exception as e:
+                    print(f"   ❌ Error ejecutando test {idx}: {e}")
+                    test_results.append({
+                        'test_case': description,
+                        'input': test_input,
+                        'expected_output': expected_output,
+                        'actual_output': None,
+                        'passed': False,
+                        'execution_time_ms': 0,
+                        'error': str(e)
+                    })
+            
+            total_tests = len(test_cases)
+            sandbox_success = True
+            
+            print(f"   📊 Resultado final: {passed_tests}/{total_tests} tests pasados\n")
 
         if not sandbox_success or total_tests == 0:
             # Si el sandbox falló, usar evaluación tradicional con IA

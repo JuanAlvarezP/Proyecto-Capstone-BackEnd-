@@ -4,16 +4,18 @@ from django.contrib.auth.models import User
 
 
 class QuestionSerializer(serializers.ModelSerializer):
-    """Serializer para preguntas - oculta respuestas correctas al candidato"""
+    """Serializer para preguntas - incluye correct_answer para evaluación"""
     
     class Meta:
         model = Question
         fields = [
             'id', 'question_type', 'question_text', 'code_snippet',
-            'options', 'programming_language', 'points', 'order',
-            'generated_by_ai'
+            'options', 'correct_answer', 'programming_language', 'points', 'order',
+            'generated_by_ai', 'test_cases'
         ]
-        # No exponer: correct_answer, test_cases, explanation, ai_prompt
+        # correct_answer es necesario para que el frontend valide respuestas de quiz
+        # test_cases es necesario para sandbox
+        # No exponer: explanation, ai_prompt (solo para admins)
         
     def to_representation(self, instance):
         """Personalizar la respuesta según el tipo de usuario"""
@@ -24,7 +26,6 @@ class QuestionSerializer(serializers.ModelSerializer):
         if request and request.user.is_staff:
             data['correct_answer'] = instance.correct_answer
             data['explanation'] = instance.explanation
-            data['test_cases'] = instance.test_cases
             data['ai_prompt'] = instance.ai_prompt
             
         return data
@@ -40,15 +41,24 @@ class QuestionCreateSerializer(serializers.ModelSerializer):
 
 class CandidateAnswerSerializer(serializers.ModelSerializer):
     """Serializer para respuestas de candidatos"""
+    question = QuestionSerializer(read_only=True)  # Para lectura - objeto completo
+    question_id = serializers.IntegerField(write_only=True)  # Para escritura - solo ID
+    score_percentage = serializers.SerializerMethodField()
     
     class Meta:
         model = CandidateAnswer
         fields = [
-            'id', 'question', 'answer_text', 'selected_option_index', 'code_answer',
-            'is_correct', 'points_earned', 'feedback', 'answered_at',
+            'id', 'question', 'question_id', 'answer_text', 'selected_option_index', 'code_answer',
+            'is_correct', 'points_earned', 'score_percentage', 'feedback', 'answered_at',
             'time_spent_seconds', 'code_output', 'test_results'
         ]
         read_only_fields = ['is_correct', 'points_earned', 'feedback', 'code_output', 'test_results']
+    
+    def get_score_percentage(self, obj):
+        """Calcula el porcentaje de puntos obtenidos"""
+        if obj.question and obj.question.points > 0:
+            return round((obj.points_earned / obj.question.points) * 100, 1)
+        return 0.0
 
 
 class AssessmentListSerializer(serializers.ModelSerializer):

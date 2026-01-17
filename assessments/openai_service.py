@@ -79,14 +79,14 @@ Reglas:
         except Exception as e:
             raise Exception(f"Error al generar preguntas con OpenAI: {str(e)}")
     
-    def generate_coding_challenges(self, topic, difficulty="MEDIUM", num_challenges=3, language="python"):
+    def generate_coding_challenges(self, topic, difficulty="MEDIUM", num_challenges=1, language="python"):
         """
         Genera desafíos de código práctico con test_cases automáticos para sandbox
         
         Args:
             topic: Tema técnico
             difficulty: EASY, MEDIUM, HARD
-            num_challenges: Cantidad de desafíos
+            num_challenges: Cantidad de desafíos (por defecto 1)
             language: Lenguaje de programación (python, javascript, java, etc.)
             
         Returns:
@@ -104,19 +104,25 @@ Reglas:
                 "snippet": "def solution(param):\\n    # Tu código aquí\\n    pass",
                 "input_example": '"[1, 2, 3]"',
                 "output_example": '"6"',
-                "note": "Para arrays usa JSON string: [1,2,3], para strings usa comillas escapadas"
+                "note": "Test_cases para Python sandbox - formato JSON estándar",
+                "example_one_param": '{"input": "[1, 2, 3]", "expected_output": "6"}',
+                "example_multi_param": '{"input": "[[1, 2, 3], 5]", "expected_output": "[1, 2, 3, 5]"}'
             },
             "javascript": {
                 "snippet": "function solution(param) {\\n  // Tu código aquí\\n}",
                 "input_example": '"[1, 2, 3]"',
                 "output_example": '"6"',
-                "note": "Para arrays usa JSON string: [1,2,3], para strings usa comillas escapadas"
+                "note": "Test_cases para JavaScript sandbox - formato JSON estándar",
+                "example_one_param": '{"input": "[1, 2, 3]", "expected_output": "6"}',
+                "example_multi_param": '{"input": "[[1, 2, 3], 5]", "expected_output": "[1, 2, 3, 5]"}'
             },
             "java": {
                 "snippet": "public class Solution {\\n  public static int solution(int[] param) {\\n    // Tu código aquí\\n    return 0;\\n  }\\n}",
                 "input_example": '"[1, 2, 3]"',
                 "output_example": '"6"',
-                "note": "Para arrays usa JSON string: [1,2,3], para strings usa comillas escapadas"
+                "note": "Test_cases para Java sandbox - formato JSON estándar",
+                "example_one_param": '{"input": "[1, 2, 3]", "expected_output": "6"}',
+                "example_multi_param": '{"input": "[[1, 2, 3], 5]", "expected_output": "[1, 2, 3, 5]"}'
             }
         }
         
@@ -160,15 +166,23 @@ Formato JSON requerido:
    - ✅ Caso límite (números grandes, strings largos)
    - ✅ Caso especial del dominio del problema
 
-3. **Formato de input y expected_output**:
+3. **Formato de input y expected_output** (MUY IMPORTANTE):
    - AMBOS deben ser STRINGS JSON válidos
-   - Para un parámetro: {lang_info['input_example']}
-   - Para múltiples parámetros: usar array JSON: "[5, 10]" o "[\\"hello\\", 3]"
-   - Para números: "42" o "3.14"
-   - Para strings: "\\"texto\\"" (con escapes)
-   - Para arrays: "[1, 2, 3]"
-   - Para booleanos: "true" o "false"
-   - Para null: "null"
+   - Para UN parámetro:
+     * Número: "42" o "3.14"
+     * String: "\\"texto\\"" (con escapes)
+     * Array: "[1, 2, 3]"
+     * Boolean: "true" o "false"
+     * Null: "null"
+   - Para MÚLTIPLES parámetros: usar un ARRAY que contenga todos los parámetros:
+     * Dos números: "[5, 10]"
+     * Array y número: "[[1, 2, 3, 4, 5], 6]"
+     * String y número: "[\\"hello\\", 3]"
+     * Tres parámetros: "[param1, param2, param3]"
+   
+   ⚠️ REGLA CRÍTICA: Si la función recibe múltiples parámetros, el input DEBE ser un array: "[param1, param2]"
+   ❌ INCORRECTO: "[1, 2, 3], 6" (esto NO es JSON válido)
+   ✅ CORRECTO: "[[1, 2, 3], 6]" (array con dos elementos)
 
 4. **Nota para {language}**: {lang_info['note']}
 
@@ -176,14 +190,14 @@ Formato JSON requerido:
 
 6. **Problemas realistas**: Crea desafíos educativos, prácticos y relevantes para {topic}
 
-EJEMPLO CORRECTO (JavaScript):
+EJEMPLO CORRECTO ({language.upper()} - UN PARÁMETRO):
 {{
   "challenges": [
     {{
       "question_text": "Crea una función que sume todos los números pares de un array",
       "question_type": "CODE",
-      "programming_language": "JavaScript",
-      "code_snippet": "function sumaPares(numeros) {{\\n  // Tu código aquí\\n}}",
+      "programming_language": "{language}",
+      "code_snippet": "{lang_info['snippet']}",
       "test_cases": [
         {{
           "description": "Array con números mixtos",
@@ -222,12 +236,53 @@ EJEMPLO CORRECTO (JavaScript):
   ]
 }}
 
+EJEMPLO CORRECTO ({language.upper()} - DOS PARÁMETROS):
+{{
+  "challenges": [
+    {{
+      "question_text": "Crea una función que filtre números pares de un array y retorne solo los primeros N elementos",
+      "question_type": "CODE",
+      "programming_language": "{language}",
+      "code_snippet": "{lang_info['snippet']}",
+      "test_cases": [
+        {{
+          "description": "Array con números mixtos y límite 2",
+          "input": "[[1, 2, 3, 4, 5, 6], 2]",
+          "expected_output": "[2, 4]"
+        }},
+        {{
+          "description": "Array vacío",
+          "input": "[[], 3]",
+          "expected_output": "[]"
+        }},
+        {{
+          "description": "Límite mayor que pares disponibles",
+          "input": "[[2, 4, 6], 10]",
+          "expected_output": "[2, 4, 6]"
+        }},
+        {{
+          "description": "Solo impares con límite",
+          "input": "[[1, 3, 5], 2]",
+          "expected_output": "[]"
+        }}
+      ],
+      "explanation": "Filtrar los pares y luego usar slice(0, limite). Complejidad O(n).",
+      "points": 20
+    }}
+  ]
+}}
+
 ⚠️ VERIFICACIÓN FINAL:
 - Cada test_case tiene "description", "input" (string JSON), "expected_output" (string JSON)
 - Los valores de input y expected_output están entre comillas y son strings JSON válidos
 - Hay al menos 4-6 test_cases por desafío
 - Los test_cases cubren casos normales, edge cases y casos límite
 - El nivel de dificultad es {difficulty_map.get(difficulty)}
+- Los test_cases son COMPATIBLES con sandbox de {language} (Piston API, e0.gg, etc.)
+- El formato de input/output es UNIVERSAL y funciona en cualquier sandbox
+
+IMPORTANTE: Los test_cases generados deben ser ejecutables en sandboxes reales para {language}.
+El formato JSON debe ser compatible con APIs de ejecución de código como Piston API.
 
 Ahora genera los {num_challenges} desafíos sobre {topic} en {language}:
 """
@@ -356,24 +411,57 @@ RECORDATORIO FINAL: Si marcas "is_correct": true, el score_percentage NO puede s
             
             result = json.loads(response.choices[0].message.content)
             
-            # VALIDACIÓN ROBUSTA: Asegurar puntaje mínimo
+            # ⚡⚡⚡ VALIDACIÓN ULTRA ROBUSTA: MÚLTIPLES CAPAS DE VERIFICACIÓN ⚡⚡⚡
             score = result.get("score_percentage", 0)
             is_correct = result.get("is_correct", False)
             test_results = result.get("test_results", [])
             
-            # Verificar si todos los tests pasaron
-            all_tests_passed = False
+            # Contar tests que pasaron
+            passed_count = 0
+            total_count = len(test_results) if test_results else 0
             if test_results:
-                all_tests_passed = all(t.get("passed", False) for t in test_results)
+                passed_count = sum(1 for t in test_results if t.get("passed", False))
             
-            # Si el código es correcto O todos los tests pasaron, aplicar puntaje mínimo
-            if (is_correct or all_tests_passed) and score < criteria["min_score"]:
+            all_tests_passed = (total_count > 0 and passed_count == total_count)
+            
+            # 🔴 CAPA 1: Si is_correct es true, FORZAR puntaje mínimo
+            if is_correct:
+                if score < criteria["min_score"]:
+                    result["score_percentage"] = criteria["min_score"]
+                    result["feedback"] = f"✅ Código correcto que resuelve el problema. {result.get('feedback', '')}"
+            
+            # 🔴 CAPA 2: Si todos los tests pasaron, FORZAR puntaje mínimo
+            if all_tests_passed:
+                if score < criteria["min_score"]:
+                    result["score_percentage"] = criteria["min_score"]
+                    result["is_correct"] = True
+                    result["feedback"] = f"✅ TODOS los tests pasaron ({passed_count}/{total_count}). {result.get('feedback', '')}"
+            
+            # 🔴 CAPA 3: Si pasa más del 80% de tests, dar al menos 70%
+            if total_count > 0:
+                pass_rate = (passed_count / total_count) * 100
+                if pass_rate >= 80 and score < 70:
+                    result["score_percentage"] = max(70, score)
+                    result["is_correct"] = pass_rate == 100
+            
+            # 🔴 CAPA 4: Verificación final cruzada
+            final_score = result.get("score_percentage", 0)
+            final_is_correct = result.get("is_correct", False)
+            
+            if final_is_correct and final_score < criteria["min_score"]:
+                result["score_percentage"] = criteria["min_score"]
+            
+            if all_tests_passed and final_score < criteria["min_score"]:
                 result["score_percentage"] = criteria["min_score"]
                 result["is_correct"] = True
-                result["feedback"] = f"✅ Código funcional que resuelve correctamente el problema. {result.get('feedback', '')}"
             
-            if result.get("is_correct") and result.get("score_percentage", 0) < criteria["min_score"]:
+            # 🔴 CAPA 5: Garantía absoluta - última verificación
+            ultimate_score = result.get("score_percentage", 0)
+            if all_tests_passed and ultimate_score < criteria["min_score"]:
+                # Si TODOS los tests pasaron, NO PUEDE ser menos del mínimo
                 result["score_percentage"] = criteria["min_score"]
+                result["is_correct"] = True
+                print(f"⚠️ CORRECCIÓN FORZADA: Score original {score}% -> {criteria['min_score']}% (todos los tests pasaron)")
             
             return result
             

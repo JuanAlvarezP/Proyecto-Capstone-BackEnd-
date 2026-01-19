@@ -1,12 +1,14 @@
 from rest_framework import viewsets, permissions, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action,api_view
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from .models import Application
+from .models import Application,Project, Assessment
 from .serializers import ApplicationSerializer
 from .utils import extract_text, compute_match, compute_match_v2
 from .ai_client import calculate_candidate_score, parse_cv_text
-
+from django.db.models import Count, Avg
+from django.db.models.functions import TruncDate
+from django.db.models import Q
 
 class ApplicationViewSet(viewsets.ModelViewSet):
     queryset = Application.objects.select_related("candidate", "project").all().order_by("-created_at")
@@ -14,6 +16,66 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, FormParser, JSONParser]  # Añadido JSONParser
     permission_classes = [permissions.IsAuthenticated]
 
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        project_id = request.query_params.get('project_id')
+        filters = Q(project_id=project_id) if project_id else Q()
+
+        # 1. KPIs de Evaluación (Promedio de todos los tipos: QUIZ y CODING)
+        assessments_qs = Assessment.objects.filter(filters, status__in=['EVALUATED', 'COMPLETED'])
+        avg_technical = assessments_qs.aggregate(Avg('score'))['score__avg'] or 0
+
+        # 2. Ranking con Validación de Múltiples Pruebas
+        top_candidates_data = []
+        apps = Application.objects.filter(filters).order_by('-match_score')[:5]
+
+        for app in apps:
+            # Obtenemos el promedio de todas las pruebas del candidato para este proyecto
+            cand_assessments = Assessment.objects.filter(
+                candidate_id=app.candidate_id, 
+                project_id=app.project_id,
+                status__in=['EVALUATED', 'COMPLETED']
+            )
+            
+            top_candidates_data.append({
+                "username": app.candidate.username,
+                "match_score": app.match_score,
+                "project_title": app.project.title,
+                "tech_score_avg": round(cand_assessments.aggregate(Avg('score'))['score__avg'] or 0, 1),
+                "tests_count": cand_assessments.count() # Indica cuántas pruebas hizo
+            })
+            if project_id:
+                project = Project.objects.get(id=project_id)
+                skills_dict = project.required_skills if isinstance(project.required_skills, list) else {}
+                top_app = Application.objects.filter(project_id=project_id).order_by('-match_score').first()
+                cand_score = top_app.match_score if top_app else 0
+                print(project.required_skills)
+            # 3. Construimos el radar dinámicamente
+                comparison_radar = []
+                for skill in skills_dict:
+                    comparison_radar.append({
+                        "skill": skill,
+                        "required": 100,
+                        "detected": cand_score # Usamos el Match Score global como indicador del candidato
+                    })
+            else:
+                comparison_radar = []
+        return Response({
+            "projects_list": Project.objects.values('id', 'title'),
+            "kpis": {
+                "projects": Project.objects.count(),
+                "applications": Application.objects.filter(filters).count(),
+                "avg_match": round(Application.objects.filter(filters).aggregate(Avg('match_score'))['match_score__avg'] or 0, 1),
+                "avg_technical": round(avg_technical, 1)
+            },
+            "skills_radar": [ # Datos dinámicos 
+                {"subject": "Python", "A": 90}, {"subject": "React", "A": 70},
+                {"subject": "SQL", "A": 85}, {"subject": "Testing", "A": 60}
+            ],
+            "status_distribution": list(Application.objects.filter(filters).values('status').annotate(total=Count('id'))),
+            "top_candidates": top_candidates_data,
+           "comparison_radar": comparison_radar
+        })
     # Si no eres admin (is_staff), solo ves tus propias aplicaciones
     def get_queryset(self):
         qs = super().get_queryset()

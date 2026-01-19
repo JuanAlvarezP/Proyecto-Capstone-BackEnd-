@@ -7,4 +7,5 @@ router.register(r"applications", ApplicationViewSet, basename="application")
 
 urlpatterns = [
     path("", include(router.urls)),
-]
+    path("dashboard-stats/", ApplicationViewSet.as_view({'get': 'stats'}), name="dashboard_stats"),    
+    ]

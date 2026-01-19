@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from projects.models import Project
 from django.db.models import JSONField
+from assessments.models import Assessment
 
 
 def cv_upload_path(instance, filename):

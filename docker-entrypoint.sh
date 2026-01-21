@@ -17,14 +17,16 @@ python manage.py collectstatic --noinput
 
 # Crear superusuario si no existe (opcional, para desarrollo)
 if [ "$DJANGO_SUPERUSER_USERNAME" ] && [ "$DJANGO_SUPERUSER_EMAIL" ] && [ "$DJANGO_SUPERUSER_PASSWORD" ]; then
-    echo "👤 Creando superusuario..."
+    echo "👤 Configurando superusuario..."
     python manage.py shell -c "
 from django.contrib.auth.models import User
-if not User.objects.filter(username='$DJANGO_SUPERUSER_USERNAME').exists():
-    User.objects.create_superuser('$DJANGO_SUPERUSER_USERNAME', '$DJANGO_SUPERUSER_EMAIL', '$DJANGO_SUPERUSER_PASSWORD')
-    print('✅ Superusuario creado')
-else:
-    print('ℹ️  Superusuario ya existe')
+# Eliminar superusuario si existe para recrearlo con nuevas credenciales
+if User.objects.filter(username='$DJANGO_SUPERUSER_USERNAME').exists():
+    User.objects.filter(username='$DJANGO_SUPERUSER_USERNAME').delete()
+    print('🗑️  Superusuario anterior eliminado')
+# Crear nuevo superusuario
+User.objects.create_superuser('$DJANGO_SUPERUSER_USERNAME', '$DJANGO_SUPERUSER_EMAIL', '$DJANGO_SUPERUSER_PASSWORD')
+print('✅ Superusuario creado con credenciales actualizadas')
 " || true
 fi
 

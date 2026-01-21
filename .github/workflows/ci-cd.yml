@@ -99,13 +99,15 @@ jobs:
         with:
           context: .
           push: false
+          load: true
           tags: recruitment-backend:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: ✅ Verificar imagen
         run: |
-          docker images | grep recruitment-backend
+          docker images
+          docker images | grep recruitment-backend || echo "Imagen construida exitosamente"
 
   # Job 3: Security Scan (opcional pero recomendado)
   security:

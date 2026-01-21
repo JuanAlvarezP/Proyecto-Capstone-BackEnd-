@@ -106,6 +106,11 @@ SIMPLE_JWT = {
 # --- OpenAI Configuration ---
 OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
 
+# --- Resend Email Configuration ---
+RESEND_API_KEY = config('RESEND_API_KEY', default='')
+FROM_EMAIL = config('FROM_EMAIL', default='onboarding@resend.dev')
+FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')
+
 # --- CORS (para React frontend) ---
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',

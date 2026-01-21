@@ -390,6 +390,90 @@ class AssessmentViewSet(viewsets.ModelViewSet):
             )
         
         return self._analyze_application_logic(application_id)
+    
+    @action(detail=True, methods=['post'], url_path='send-invitation', permission_classes=[permissions.IsAdminUser])
+    def send_invitation(self, request, pk=None):
+        """
+        Envía invitaciones por email a múltiples usuarios para realizar una evaluación
+        POST /api/assessments/assessments/{assessment_id}/send-invitation/
+        
+        Body:
+        {
+            "user_ids": [1, 2, 3],
+            "custom_message": "Mensaje opcional personalizado"
+        }
+        """
+        from .email_service import send_assessment_invitation
+        
+        assessment = self.get_object()
+        user_ids = request.data.get('user_ids', [])
+        custom_message = request.data.get('custom_message')
+        
+        # Validar que se proporcionaron user_ids
+        if not user_ids or not isinstance(user_ids, list):
+            return Response(
+                {'error': 'user_ids debe ser una lista de IDs de usuarios'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validar que los usuarios existen
+        from django.contrib.auth.models import User
+        existing_users = User.objects.filter(id__in=user_ids).values_list('id', flat=True)
+        invalid_ids = set(user_ids) - set(existing_users)
+        
+        if invalid_ids:
+            return Response(
+                {
+                    'error': f'Los siguientes user_ids no existen: {list(invalid_ids)}',
+                    'valid_ids': list(existing_users)
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Enviar invitaciones
+        result = send_assessment_invitation(
+            assessment_id=assessment.id,
+            user_ids=list(existing_users),
+            custom_message=custom_message
+        )
+        
+        return Response(result, status=status.HTTP_200_OK)
+    
+    @action(detail=True, methods=['post'], url_path='notify-completed', permission_classes=[permissions.IsAuthenticated])
+    def notify_completed(self, request, pk=None):
+        """
+        Notifica que una evaluación ha sido completada
+        - Al candidato: confirmación de recepción
+        - A los admins: nueva evaluación para revisar
+        
+        POST /api/assessments/assessments/{assessment_id}/notify-completed/
+        """
+        from .email_service import notify_assessment_completed
+        
+        assessment = self.get_object()
+        
+        # Validar que el usuario puede notificar esta evaluación
+        # (debe ser el candidato o un admin)
+        if not request.user.is_staff and assessment.candidate != request.user:
+            return Response(
+                {'error': 'No tienes permiso para notificar esta evaluación'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Validar que la evaluación está completada
+        if assessment.status != 'COMPLETED':
+            return Response(
+                {
+                    'error': f'La evaluación debe estar en estado COMPLETED. Estado actual: {assessment.status}',
+                    'current_status': assessment.status
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Enviar notificaciones
+        result = notify_assessment_completed(assessment_id=assessment.id)
+        
+        return Response(result, status=status.HTTP_200_OK)
 
 
 class QuestionViewSet(viewsets.ModelViewSet):

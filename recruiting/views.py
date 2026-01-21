@@ -184,3 +184,28 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         self.perform_update(serializer)
         
         return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'], url_path='notify-admins')
+    def notify_admins(self, request, pk=None):
+        """
+        Notifica a todos los administradores sobre una nueva aplicación
+        POST /api/recruiting/applications/{application_id}/notify-admins/
+        
+        Puede ser llamado por el candidato después de aplicar o por un admin
+        """
+        from .email_service import notify_new_application
+        
+        application = self.get_object()
+        
+        # Validar que el usuario puede enviar esta notificación
+        # (debe ser el candidato que aplicó o un admin)
+        if not request.user.is_staff and application.candidate != request.user:
+            return Response(
+                {'error': 'No tienes permiso para notificar esta aplicación'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Enviar notificaciones a admins
+        result = notify_new_application(application_id=application.id)
+        
+        return Response(result, status=status.HTTP_200_OK)

@@ -1,0 +1,62 @@
+# Entorno virtual Python
+venv/
+env/
+ENV/
+.venv
+
+# Archivos Python compilados
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Django
+*.log
+db.sqlite3
+db.sqlite3-journal
+/media/cvs/*
+!/media/cvs/.gitkeep
+/static/
+*.pot
+
+# Variables de entorno
+.env
+.env.local
+.env.*.local
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Documentación
+docs/_build/
+
+# Git
+.git/
+.gitignore
+
+# Backups
+*.bak
+*_backup/
+
+# Archivos temporales
+*.tmp
+.cache/
+
+# Node modules (si tienes frontend en el mismo repo)
+node_modules/

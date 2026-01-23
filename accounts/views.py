@@ -1,11 +1,20 @@
 from rest_framework import generics, permissions, status, viewsets
 from rest_framework.response import Response
+from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.models import User
 from .serializers import (
     RegisterSerializer, MeSerializer, UserUpdateSerializer, 
-    ChangePasswordSerializer, AdminUserSerializer
+    ChangePasswordSerializer, AdminUserSerializer, EmailTokenObtainPairSerializer
 )
+
+
+class EmailTokenObtainPairView(TokenObtainPairView):
+    """
+    Vista personalizada para obtener tokens JWT usando email en lugar de username.
+    El frontend envía: { "email": "correo@ejemplo.com", "password": "..." }
+    """
+    serializer_class = EmailTokenObtainPairSerializer
 
 
 class UserViewSet(viewsets.ModelViewSet):

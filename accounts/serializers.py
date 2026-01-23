@@ -1,5 +1,6 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 import re
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -171,3 +172,33 @@ class AdminUserSerializer(serializers.ModelSerializer):
         
         instance.save()
         return instance
+
+
+class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """
+    Serializer personalizado de JWT que permite autenticación con email.
+    El frontend envía { "email": "...", "password": "..." }
+    """
+    username_field = 'email'
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Reemplazar el campo 'username' por 'email'
+        self.fields['email'] = serializers.EmailField(required=True)
+        self.fields.pop('username', None)
+    
+    def validate(self, attrs):
+        # Obtener email y password
+        email = attrs.get('email')
+        password = attrs.get('password')
+        
+        # Buscar usuario por email
+        try:
+            user = User.objects.get(email=email)
+            # Usar el username del usuario encontrado para la autenticación JWT
+            attrs['username'] = user.username
+        except User.DoesNotExist:
+            raise serializers.ValidationError('No se encontró un usuario con este correo electrónico.')
+        
+        # Llamar al método padre con el username correcto
+        return super().validate(attrs)

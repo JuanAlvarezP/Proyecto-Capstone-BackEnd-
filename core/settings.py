@@ -61,6 +61,12 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 
+# --- Authentication Backends ---
+AUTHENTICATION_BACKENDS = [
+    'accounts.authentication.EmailBackend',  # Backend personalizado para login con email
+    'django.contrib.auth.backends.ModelBackend',  # Backend por defecto (username)
+]
+
 # --- Base de datos ---
 DATABASES = {
     'default': {

@@ -7,10 +7,12 @@ class RegisterSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(required=True)
     first_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
     last_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    is_staff = serializers.BooleanField(required=False, default=False)
+    is_superuser = serializers.BooleanField(required=False, default=False)
 
     class Meta:
         model = User
-        fields = ("username", "email", "password", "first_name", "last_name")
+        fields = ("username", "email", "password", "first_name", "last_name", "is_staff", "is_superuser")
 
     def validate_email(self, value):
         """
@@ -73,13 +75,28 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        return User.objects.create_user(
+        # Extraer los campos de permisos
+        is_staff = validated_data.pop('is_staff', False)
+        is_superuser = validated_data.pop('is_superuser', False)
+        
+        # Extraer la contraseña
+        password = validated_data.pop('password')
+        
+        # Crear el usuario sin contraseña primero
+        user = User.objects.create(
             username=validated_data["username"],
             email=validated_data["email"],
-            password=validated_data["password"],
             first_name=validated_data.get("first_name", ""),
             last_name=validated_data.get("last_name", ""),
+            is_staff=is_staff,
+            is_superuser=is_superuser
         )
+        
+        # Establecer la contraseña de forma segura
+        user.set_password(password)
+        user.save()
+        
+        return user
 
 class MeSerializer(serializers.ModelSerializer):
     class Meta:

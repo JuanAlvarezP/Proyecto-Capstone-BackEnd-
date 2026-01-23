@@ -89,7 +89,8 @@ class RegisterSerializer(serializers.ModelSerializer):
             first_name=validated_data.get("first_name", ""),
             last_name=validated_data.get("last_name", ""),
             is_staff=is_staff,
-            is_superuser=is_superuser
+            is_superuser=is_superuser,
+            is_active=True  # Importante: activar el usuario para que pueda iniciar sesión
         )
         
         # Establecer la contraseña de forma segura

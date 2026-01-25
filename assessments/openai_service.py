@@ -16,7 +16,7 @@ class OpenAIAssessmentService:
             raise ValueError("OPENAI_API_KEY no está configurada en settings o variables de entorno")
         self.client = OpenAI(api_key=api_key)
         
-    def generate_quiz_questions(self, topic, difficulty="MEDIUM", num_questions=10, language="es"):
+    def generate_quiz_questions(self, topic, difficulty="MEDIUM", num_questions=10, language="es", include_code_snippets=False):
         """
         Genera preguntas de cuestionario técnico
         
@@ -25,6 +25,7 @@ class OpenAIAssessmentService:
             difficulty: EASY, MEDIUM, HARD
             num_questions: Cantidad de preguntas a generar
             language: Idioma de las preguntas (es, en)
+            include_code_snippets: Si True, genera preguntas con fragmentos de código
             
         Returns:
             Lista de diccionarios con preguntas
@@ -53,9 +54,37 @@ class OpenAIAssessmentService:
         diff_info = difficulty_map.get(difficulty, difficulty_map["MEDIUM"])
         suggested_time = (diff_info["min_time_per_question"] + diff_info["max_time_per_question"]) / 2 * num_questions
         
+        # Instrucciones adicionales para code_snippets
+        code_instructions = ""
+        code_example = ""
+        if include_code_snippets:
+            code_instructions = f"""
+
+🔥 GENERACIÓN DE FRAGMENTOS DE CÓDIGO (IMPORTANTE):
+- Se requiere que TODAS o la MAYORÍA de las preguntas incluyan fragmentos de código
+- Para cada pregunta que requiera código, DEBES incluir AMBOS campos:
+  * "question_text": La pregunta que hace referencia al código
+  * "code_snippet": El fragmento de código completo y funcional
+- El code_snippet debe ser código REAL, ejecutable y relevante para {topic}
+- La pregunta puede preguntar sobre: salida, comportamiento, errores, optimización, etc.
+- El código debe ser claro, bien formateado y sin errores de sintaxis
+- MÍNIMO {int(num_questions * 0.6)} preguntas deben incluir code_snippet"""
+            
+            code_example = f"""
+EJEMPLO DE PREGUNTA CON CÓDIGO:
+{{
+  "question_text": "¿Cuál es la salida del siguiente código?",
+  "code_snippet": "def suma(a, b):\\n    return a + b\\n\\nresultado = suma(3, 5)\\nprint(resultado)",
+  "question_type": "MULTIPLE_CHOICE",
+  "options": ["3", "5", "8", "Error"],
+  "correct_answer": "2",
+  "explanation": "La función suma recibe 3 y 5 como parámetros, los suma (3+5=8) y retorna 8. Luego print(8) muestra '8' en la salida.",
+  "points": 10
+}}"""
+        
         prompt = f"""Genera EXACTAMENTE {num_questions} preguntas de opción múltiple sobre {topic} de {diff_info['description']}.
 
-🎯 OBJETIVO: Crear {num_questions} preguntas de ALTA CALIDAD que evalúen comprensión real del tema.
+🎯 OBJETIVO: Crear {num_questions} preguntas de ALTA CALIDAD que evalúen comprensión real del tema.{code_instructions}
 
 ⏱️ TIEMPO SUGERIDO PARA ESTA EVALUACIÓN: {int(suggested_time)} minutos
    (Aproximadamente {diff_info['min_time_per_question']}-{diff_info['max_time_per_question']} minutos por pregunta para {diff_info['description']})
@@ -80,6 +109,7 @@ Formato JSON requerido:
   "questions": [
     {{
       "question_text": "Pregunta detallada que requiera análisis (mínimo 50 caracteres)",
+      "code_snippet": "# Código relevante (OPCIONAL, pero REQUERIDO si include_code_snippets=true)\\ndef ejemplo():\\n    return 42",
       "question_type": "MULTIPLE_CHOICE",
       "options": ["Opción A detallada", "Opción B detallada", "Opción C detallada", "Opción D detallada"],
       "correct_answer": "0",
@@ -90,7 +120,7 @@ Formato JSON requerido:
   "suggested_time_minutes": {int(suggested_time)},
   "difficulty_level": "{difficulty}",
   "topic": "{topic}"
-}}
+}}{code_example}
 
 🚫 EVITA (ERRORES COMUNES):
 - ❌ Preguntas que se responden con "sí/no" obvios
@@ -98,7 +128,6 @@ Formato JSON requerido:
 - ❌ Opciones claramente incorrectas o ridículas
 - ❌ Preguntas demasiado simples para {diff_info['description']}
 - ❌ Explicaciones vagas o incompletas
-
 ✅ BUSCA (BUENAS PRÁCTICAS):
 - ✅ Preguntas que requieran razonamiento
 - ✅ Escenarios realistas del mundo real

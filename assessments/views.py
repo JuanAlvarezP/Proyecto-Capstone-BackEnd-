@@ -5,6 +5,7 @@ from django.utils import timezone
 from django.conf import settings
 import json
 import logging
+import re
 from .models import Assessment, Question, CandidateAnswer
 from .serializers import (
     AssessmentListSerializer, AssessmentDetailSerializer, AssessmentCreateSerializer,
@@ -45,7 +46,8 @@ class AssessmentViewSet(viewsets.ModelViewSet):
             "topic": "Python avanzado",
             "num_questions": 10,  # Para QUIZ
             "num_challenges": 1,  # Para CODING (siempre 1 desafío)
-            "language": "es"  # o "en"
+            "language": "es",  # o "en"
+            "include_code_snippets": true  # Generar fragmentos de código en preguntas QUIZ
         }
         """
         assessment = self.get_object()
@@ -53,6 +55,7 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         num_questions = request.data.get('num_questions', 10)
         num_challenges = request.data.get('num_challenges', 1)
         language = request.data.get('language', 'es')
+        include_code_snippets = request.data.get('include_code_snippets', False)
         
         if not topic:
             return Response(
@@ -70,27 +73,43 @@ class AssessmentViewSet(viewsets.ModelViewSet):
                     topic=topic,
                     difficulty=assessment.difficulty,
                     num_questions=num_questions,
-                    language=language
+                    language=language,
+                    include_code_snippets=include_code_snippets
                 )
                 
                 for idx, q_data in enumerate(questions_data):
                     correct_answer_value = str(q_data.get('correct_answer', ''))
+                    question_text = q_data['question_text']
+                    code_snippet = q_data.get('code_snippet', '')
+                    
+                    # Si no hay code_snippet pero el texto menciona código, extraerlo
+                    if not code_snippet:
+                        code_snippet = self._extract_code_from_text(question_text)
+                    
+                    # Validar que si se menciona código, exista code_snippet
+                    if self._mentions_code(question_text) and not code_snippet:
+                        logger.warning(
+                            f"Pregunta {idx+1} menciona código pero no tiene code_snippet: {question_text[:100]}"
+                        )
+                    
                     question = Question.objects.create(
                         assessment=assessment,
                         question_type=q_data.get('question_type', 'MULTIPLE_CHOICE'),
-                        question_text=q_data['question_text'],
+                        question_text=question_text,
+                        code_snippet=code_snippet,
                         options=q_data.get('options', []),
                         correct_answer=correct_answer_value,
                         explanation=q_data.get('explanation', ''),
                         points=q_data.get('points', 10),
                         order=idx,
                         generated_by_ai=True,
-                        ai_prompt=f"Topic: {topic}, Difficulty: {assessment.difficulty}"
+                        ai_prompt=f"Topic: {topic}, Difficulty: {assessment.difficulty}, Include Code: {include_code_snippets}"
                     )
                     print(f"✅ Pregunta {idx+1} guardada:")
                     print(f"   ID: {question.id}")
                     print(f"   Texto: {question.question_text[:60]}...")
                     print(f"   Opciones: {question.options}")
+                    print(f"   code_snippet: {len(code_snippet)} caracteres")
                     print(f"   correct_answer: '{question.correct_answer}' (tipo: {type(question.correct_answer).__name__})")
                     generated_questions.append(question)
                     
@@ -482,6 +501,57 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         result = notify_assessment_completed(assessment_id=assessment.id)
         
         return Response(result, status=status.HTTP_200_OK)
+    
+    def _extract_code_from_text(self, text):
+        """
+        Extrae bloques de código del texto usando regex.
+        Detecta bloques con triple backticks (```código```) o indentación especial.
+        
+        Returns:
+            str: El código extraído o cadena vacía
+        """
+        # Patrón 1: Triple backticks con o sin lenguaje (```python ... ``` o ``` ... ```)
+        pattern1 = r'```(?:\w+)?\s*\n(.*?)\n```'
+        match = re.search(pattern1, text, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        
+        # Patrón 2: Backticks simples multilínea (`código`)
+        pattern2 = r'`([^`]+)`'
+        matches = re.findall(pattern2, text)
+        # Si hay matches largos (probablemente código), retornar el más largo
+        if matches:
+            longest = max(matches, key=len)
+            if len(longest) > 20:  # Evitar extraer palabras simples
+                return longest.strip()
+        
+        return ''
+    
+    def _mentions_code(self, text):
+        """
+        Detecta si el texto de la pregunta menciona código.
+        
+        Returns:
+            bool: True si menciona código
+        """
+        # Frases completas que claramente mencionan código
+        explicit_phrases = [
+            'siguiente código', 'siguiente codigo',
+            'código anterior', 'codigo anterior',
+            'salida del', 'resultado del código', 'resultado del codigo',
+            'qué imprime', 'que imprime',
+            'qué devuelve', 'que devuelve',
+            'ejecutar el', 'execute the',
+            'output of',
+            'following code',
+            'above code',
+            'código proporcionado', 'codigo proporcionado',
+            'provided code',
+            'código mostrado', 'codigo mostrado'
+        ]
+        
+        text_lower = text.lower()
+        return any(phrase in text_lower for phrase in explicit_phrases)
 
 
 class QuestionViewSet(viewsets.ModelViewSet):

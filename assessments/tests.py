@@ -8,6 +8,7 @@ import json
 
 from .models import Assessment, Question, CandidateAnswer
 from .openai_service import OpenAIAssessmentService
+from .views import AssessmentViewSet
 from projects.models import Project
 
 
@@ -482,3 +483,100 @@ class QuizEvaluationTestCase(APITestCase):
         self.assertEqual(data['evaluated_answers'], 2)
         self.assertEqual(data['total_points'], 10)
         self.assertEqual(data['score_percentage'], 50.0)
+
+
+class CodeSnippetGenerationTestCase(TestCase):
+    """Tests para la generación de preguntas con fragmentos de código"""
+
+    def setUp(self):
+        self.viewset = AssessmentViewSet()
+
+    def test_extract_code_from_text_with_triple_backticks(self):
+        """Test: Extraer código de texto con triple backticks"""
+        text = """¿Cuál es la salida del siguiente código?
+```python
+def suma(a, b):
+    return a + b
+print(suma(3, 5))
+```
+Selecciona la respuesta correcta."""
+        
+        code = self.viewset._extract_code_from_text(text)
+        self.assertIn("def suma", code)
+        self.assertIn("return a + b", code)
+        self.assertIn("print(suma(3, 5))", code)
+
+    def test_extract_code_from_text_with_backticks_no_language(self):
+        """Test: Extraer código sin especificar lenguaje"""
+        text = """Considera el siguiente código:
+```
+x = 10
+y = 20
+print(x + y)
+```
+¿Qué imprime?"""
+        
+        code = self.viewset._extract_code_from_text(text)
+        self.assertIn("x = 10", code)
+        self.assertIn("y = 20", code)
+
+    def test_extract_code_from_text_with_single_backticks(self):
+        """Test: Extraer código largo con backticks simples"""
+        text = "Analiza este código: `function sum(a,b) { return a + b; } console.log(sum(2,3));`"
+        
+        code = self.viewset._extract_code_from_text(text)
+        self.assertIn("function sum", code)
+
+    def test_extract_code_from_text_no_code(self):
+        """Test: No extraer código cuando no existe"""
+        text = "¿Qué es Python? Es un lenguaje de programación interpretado."
+        
+        code = self.viewset._extract_code_from_text(text)
+        self.assertEqual(code, '')
+
+    def test_mentions_code_spanish(self):
+        """Test: Detectar mención de código en español"""
+        texts_with_code = [
+            "¿Cuál es la salida del siguiente código?",
+            "Analiza el código proporcionado",
+            "¿Qué imprime este programa?",
+            "El siguiente código define una función...",
+            "Ejecutar el script produce...",
+            "¿Qué devuelve la función?"
+        ]
+        
+        for text in texts_with_code:
+            self.assertTrue(
+                self.viewset._mentions_code(text),
+                f"Debería detectar código en: {text}"
+            )
+
+    def test_mentions_code_english(self):
+        """Test: Detectar mención de código en inglés"""
+        texts_with_code = [
+            "What is the output of the following code?",
+            "Execute the program to see...",
+            "The above code returns..."
+        ]
+        
+        for text in texts_with_code:
+            self.assertTrue(
+                self.viewset._mentions_code(text),
+                f"Debería detectar código en: {text}"
+            )
+
+    def test_not_mentions_code(self):
+        """Test: No detectar código cuando no se menciona"""
+        texts_without_code = [
+            "¿Qué es la programación orientada a objetos?",
+            "Define el concepto de recursión",
+            "Menciona tres ventajas de usar Git",
+            "Explica las diferencias entre POST y GET"
+        ]
+        
+        for text in texts_without_code:
+            self.assertFalse(
+                self.viewset._mentions_code(text),
+                f"No debería detectar código en: {text}"
+            )
+

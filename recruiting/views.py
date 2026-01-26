@@ -159,90 +159,56 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        """Procesamiento de CV con IA"""
-        import traceback
+        # Procesamiento de CV con IA (código de tu compañero)
+        app = serializer.save(candidate=self.request.user)
+
+        # 1. EXTRAER TEXTO DEL ARCHIVO
+        if app.cv_file:
+            text = extract_text(app.cv_file.path)
+            app.parsed_text = text[:20000]
+
+        # 2. ENVIAR A IA PARA JSON
+        extracted = {}
+        if app.parsed_text:
+            try:
+                extracted = parse_cv_text(app.parsed_text)
+                # Validar que extracted sea un diccionario y no None
+                if not isinstance(extracted, dict):
+                    extracted = {"error": "La IA retornó un formato inválido"}
+            except Exception as e:
+                extracted = {"error": str(e)}
+
+        app.extracted = extracted
+        project = serializer.validated_data['project']
+        requirements = {
+            "title": project.title,
+            "skills": project.required_skills,
+            "description": project.description
+        }
+
+        # 1. Llamamos a la nueva función de calificación
+        scores = calculate_candidate_score(extracted, requirements) #
         
+        s_score = scores.get("skills_score", 0)
+        e_score = scores.get("experience_score", 0)
+
+        # 2. APLICAMOS LOS PESOS (Skills 40%, Experience 60%)
+        # Fórmula: (Skills * 0.4) + (Experience * 0.6)
+        final_score = (s_score * 0.4) + (e_score * 0.6) #
+
+        print(f"📊 Calificación: Skills({s_score}) + Exp({e_score}) = Total: {final_score}")
+
+        app.match_score = final_score*10
+        app.ai_analysis = scores.get("justification", "Sin análisis disponible")
+        app.save()
+        
+        # Enviar notificaciones por email a admins
+        from .email_service import notify_new_application
         try:
-            app = serializer.save(candidate=self.request.user)
-            print(f"✅ Application guardada: {app.id}")
-
-            # 1. EXTRAER TEXTO DEL ARCHIVO
-            if app.cv_file:
-                try:
-                    print(f"📄 Extrayendo texto del CV: {app.cv_file.name}")
-                    # Pasar el FileField directamente (funciona con Cloudinary y local)
-                    text = extract_text(app.cv_file)
-                    app.parsed_text = text[:20000]
-                    print(f"✅ Texto extraído: {len(text)} caracteres")
-                except Exception as e:
-                    print(f"❌ Error extrayendo texto: {str(e)}")
-                    traceback.print_exc()
-                    app.parsed_text = ""
-
-            # 2. ENVIAR A IA PARA JSON
-            extracted = {}
-            if app.parsed_text:
-                try:
-                    print(f"🤖 Enviando a IA para parsear CV...")
-                    extracted = parse_cv_text(app.parsed_text)
-                    # Validar que extracted sea un diccionario y no None
-                    if not isinstance(extracted, dict):
-                        extracted = {"error": "La IA retornó un formato inválido"}
-                    print(f"✅ CV parseado por IA")
-                except Exception as e:
-                    print(f"❌ Error en parse_cv_text: {str(e)}")
-                    traceback.print_exc()
-                    extracted = {"error": str(e)}
-
-            app.extracted = extracted
-            project = serializer.validated_data['project']
-            requirements = {
-                "title": project.title,
-                "skills": project.required_skills,
-                "description": project.description
-            }
-
-            # 3. Llamamos a la función de calificación
-            try:
-                print(f"📊 Calculando score del candidato...")
-                scores = calculate_candidate_score(extracted, requirements)
-                
-                s_score = scores.get("skills_score", 0)
-                e_score = scores.get("experience_score", 0)
-
-                # APLICAMOS LOS PESOS (Skills 40%, Experience 60%)
-                final_score = (s_score * 0.4) + (e_score * 0.6)
-                print(f"📊 Calificación: Skills({s_score}) + Exp({e_score}) = Total: {final_score}")
-            except Exception as e:
-                print(f"❌ Error calculando score: {str(e)}")
-                traceback.print_exc()
-                scores = {"skills_score": 0, "experience_score": 0, "justification": "Error en cálculo"}
-                final_score = 0
-
-            # 4. Guardamos la postulación
-            try:
-                app.match_score = final_score * 10
-                app.ai_analysis = scores.get("justification", "Sin análisis disponible")
-                app.save()
-                print(f"✅ Application actualizada con score: {app.match_score}")
-            except Exception as e:
-                print(f"❌ Error guardando application: {str(e)}")
-                traceback.print_exc()
-                raise
-            
-            # 5. Enviar notificaciones por email a admins
-            try:
-                from .email_service import notify_new_application
-                notify_new_application(app.id)
-                print(f"✅ Notificaciones enviadas a admins para application {app.id}")
-            except Exception as e:
-                print(f"⚠️ Error enviando notificaciones (no crítico): {str(e)}")
-                # No fallar si falla el email
-                
+            notify_new_application(app.id)
+            print(f"✅ Notificaciones enviadas a admins para application {app.id}")
         except Exception as e:
-            print(f"❌❌❌ ERROR CRÍTICO en perform_create: {str(e)}")
-            traceback.print_exc()
-            raise
+            print(f"❌ Error enviando notificaciones para application {app.id}: {str(e)}")
 
     # Endpoint personalizado para actualizar el estado (solo admin)
     @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAdminUser])

@@ -8,38 +8,6 @@ SECRET_KEY = config('SECRET_KEY', default='dev_key_change_me')
 DEBUG = config('DEBUG', default=True, cast=bool)
 ALLOWED_HOSTS = ['*']
 
-# --- Configuración de Cloudinary (DEBE IR ANTES DE INSTALLED_APPS) ---
-USE_CLOUDINARY = config('USE_CLOUDINARY', default=False, cast=bool)
-
-CLOUDINARY_STORAGE = {
-    'CLOUD_NAME': config('CLOUDINARY_CLOUD_NAME', default=''),
-    'API_KEY': config('CLOUDINARY_API_KEY', default=''),
-    'API_SECRET': config('CLOUDINARY_API_SECRET', default=''),
-}
-
-# Configuración de STORAGES (Django 4.2+)
-if USE_CLOUDINARY:
-    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-    STORAGES = {
-        "default": {
-            "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
-        },
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-        },
-    }
-    print("✅ CLOUDINARY ACTIVADO - Archivos se guardarán en Cloudinary")
-else:
-    STORAGES = {
-        "default": {
-            "BACKEND": "django.core.files.storage.FileSystemStorage",
-        },
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-        },
-    }
-    print("📁 ALMACENAMIENTO LOCAL - Archivos se guardarán en /media/")
-
 # --- Aplicaciones instaladas ---
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -52,8 +20,6 @@ INSTALLED_APPS = [
     # Terceros
     'rest_framework',
     'corsheaders',
-    'cloudinary_storage',
-    'cloudinary',
 
     # Apps propias
     'accounts',
@@ -171,10 +137,10 @@ CSRF_TRUSTED_ORIGINS = config(
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+# WhiteNoise - Compresión y caché de archivos estáticos
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 # --- Media files (User uploads) ---
 MEDIA_URL = '/media/'
-
-if not USE_CLOUDINARY:
-    # Solo en desarrollo local
-    MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = BASE_DIR / 'media'
 

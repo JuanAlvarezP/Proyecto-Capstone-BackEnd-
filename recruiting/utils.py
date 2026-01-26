@@ -1,32 +1,75 @@
 import re
 from pathlib import Path
 from PyPDF2 import PdfReader
-from difflib import SequenceMatcher  
+from difflib import SequenceMatcher
+from io import BytesIO
 
 
-def extract_text_from_pdf(path: str) -> str:
+def extract_text_from_pdf(file_obj) -> str:
+    """Extraer texto de un archivo PDF (acepta path string o file object)"""
     try:
-        with open(path, "rb") as f:
-            reader = PdfReader(f)
+        # Si es un string (path), abrirlo
+        if isinstance(file_obj, str):
+            with open(file_obj, "rb") as f:
+                reader = PdfReader(f)
+                return "\n".join((p.extract_text() or "") for p in reader.pages)
+        # Si es un file object (BytesIO o similar)
+        else:
+            reader = PdfReader(file_obj)
             return "\n".join((p.extract_text() or "") for p in reader.pages)
-    except:
+    except Exception as e:
+        print(f"❌ Error extrayendo texto de PDF: {e}")
         return ""
 
-def extract_text_from_docx(path: str) -> str:
+def extract_text_from_docx(file_obj) -> str:
+    """Extraer texto de un archivo DOCX (acepta path string o file object)"""
     try:
         from docx import Document
-        doc = Document(path)
+        # Si es un string (path), abrirlo normalmente
+        if isinstance(file_obj, str):
+            doc = Document(file_obj)
+        # Si es un file object
+        else:
+            doc = Document(file_obj)
         return "\n".join([p.text for p in doc.paragraphs])
-    except:
+    except Exception as e:
+        print(f"❌ Error extrayendo texto de DOCX: {e}")
         return ""
 
-def extract_text(path: str) -> str:
-    ext = Path(path).suffix.lower()
-    if ext == ".pdf":
-        return extract_text_from_pdf(path)
-    if ext == ".docx":
-        return extract_text_from_docx(path)
-    return ""
+def extract_text(file_field) -> str:
+    """
+    Extraer texto de un archivo. 
+    Acepta:
+    - String path (almacenamiento local)
+    - Django FileField (Cloudinary u otro storage)
+    """
+    try:
+        # Si es un string, usar el método antiguo
+        if isinstance(file_field, str):
+            ext = Path(file_field).suffix.lower()
+            if ext == ".pdf":
+                return extract_text_from_pdf(file_field)
+            if ext == ".docx":
+                return extract_text_from_docx(file_field)
+            return ""
+        
+        # Si es un FileField (Cloudinary), leer el contenido
+        # Obtener la extensión del nombre del archivo
+        filename = file_field.name
+        ext = Path(filename).suffix.lower()
+        
+        # Leer el contenido del archivo como BytesIO
+        file_content = BytesIO(file_field.read())
+        
+        if ext == ".pdf":
+            return extract_text_from_pdf(file_content)
+        if ext == ".docx":
+            return extract_text_from_docx(file_content)
+        
+        return ""
+    except Exception as e:
+        print(f"❌ Error en extract_text: {e}")
+        return ""
 
 def compute_match(required_skills, candidate_skills):
     if not required_skills or not candidate_skills:

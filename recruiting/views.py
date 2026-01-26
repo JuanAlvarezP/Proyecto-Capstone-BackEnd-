@@ -164,7 +164,8 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
         # 1. EXTRAER TEXTO DEL ARCHIVO
         if app.cv_file:
-            text = extract_text(app.cv_file.path)
+            # Pasar el FileField directamente (funciona con Cloudinary y local)
+            text = extract_text(app.cv_file)
             app.parsed_text = text[:20000]
 
         # 2. ENVIAR A IA PARA JSON

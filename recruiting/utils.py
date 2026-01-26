@@ -58,8 +58,18 @@ def extract_text(file_field) -> str:
         filename = file_field.name
         ext = Path(filename).suffix.lower()
         
+        print(f"📖 Leyendo archivo desde storage: {filename}")
+        
+        # Asegurarse de que el puntero del archivo esté al inicio
+        try:
+            file_field.seek(0)
+        except:
+            pass
+        
         # Leer el contenido del archivo como BytesIO
         file_content = BytesIO(file_field.read())
+        
+        print(f"📖 Archivo leído: {file_content.getbuffer().nbytes} bytes")
         
         if ext == ".pdf":
             return extract_text_from_pdf(file_content)
@@ -69,6 +79,8 @@ def extract_text(file_field) -> str:
         return ""
     except Exception as e:
         print(f"❌ Error en extract_text: {e}")
+        import traceback
+        traceback.print_exc()
         return ""
 
 def compute_match(required_skills, candidate_skills):

@@ -17,10 +17,27 @@ CLOUDINARY_STORAGE = {
     'API_SECRET': config('CLOUDINARY_API_SECRET', default=''),
 }
 
+# Configuración de STORAGES (Django 4.2+)
 if USE_CLOUDINARY:
     DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+    STORAGES = {
+        "default": {
+            "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
     print("✅ CLOUDINARY ACTIVADO - Archivos se guardarán en Cloudinary")
 else:
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
     print("📁 ALMACENAMIENTO LOCAL - Archivos se guardarán en /media/")
 
 # --- Aplicaciones instaladas ---
@@ -153,9 +170,6 @@ CSRF_TRUSTED_ORIGINS = config(
 # --- Static files (CSS, JavaScript, Images) ---
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-
-# WhiteNoise - Compresión y caché de archivos estáticos
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # --- Media files (User uploads) ---
 MEDIA_URL = '/media/'

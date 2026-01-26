@@ -26,7 +26,9 @@ def storage_config_check(request):
         'use_cloudinary': getattr(settings, 'USE_CLOUDINARY', 'Not set'),
         'cloudinary_configured': bool(
             getattr(settings, 'CLOUDINARY_STORAGE', {}).get('CLOUD_NAME')
-        )
+        ),
+        'storages_config': getattr(settings, 'STORAGES', 'Not configured'),
+        'default_file_storage': getattr(settings, 'DEFAULT_FILE_STORAGE', 'Not set'),
     }
     
     return Response(config_info)  

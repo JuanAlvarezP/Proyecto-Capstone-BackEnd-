@@ -29,5 +29,5 @@ urlpatterns = [
     path('api/assessments/', include('assessments.urls')),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Servir archivos de medios tanto en desarrollo como en producción
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

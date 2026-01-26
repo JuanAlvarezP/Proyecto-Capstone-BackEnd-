@@ -20,6 +20,8 @@ INSTALLED_APPS = [
     # Terceros
     'rest_framework',
     'corsheaders',
+    'cloudinary_storage',
+    'cloudinary',
 
     # Apps propias
     'accounts',
@@ -141,10 +143,18 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # --- Media files (User uploads) ---
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+# Configuración de Cloudinary para almacenamiento en la nube
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': config('CLOUDINARY_CLOUD_NAME', default=''),
+    'API_KEY': config('CLOUDINARY_API_KEY', default=''),
+    'API_SECRET': config('CLOUDINARY_API_SECRET', default=''),
+}
 
-# WhiteNoise - Servir archivos de medios en producción
-WHITENOISE_AUTOREFRESH = True
-WHITENOISE_USE_FINDERS = True
-WHITENOISE_ROOT = BASE_DIR / 'media'
+# Usar Cloudinary en producción, local en desarrollo
+if config('USE_CLOUDINARY', default=False, cast=bool):
+    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+    MEDIA_URL = '/media/'
+else:
+    # Desarrollo local
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'

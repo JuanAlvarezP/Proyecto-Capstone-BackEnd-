@@ -27,9 +27,11 @@ def notify_new_application(application_id):
             'candidate', 'project'
         ).get(id=application_id)
         
-        # Obtener todos los administradores
-        admins = User.objects.filter(is_staff=True) | User.objects.filter(is_superuser=True)
-        admins = admins.distinct()
+        # Obtener todos los administradores (is_staff incluye superusers normalmente)
+        from django.db.models import Q
+        admins = User.objects.filter(
+            Q(is_staff=True) | Q(is_superuser=True)
+        ).distinct('email')  # Asegurar que no haya duplicados por email
         
         if not admins.exists():
             logger.warning("No hay administradores para notificar")

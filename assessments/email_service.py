@@ -40,7 +40,7 @@ def send_assessment_invitation(assessment_id, user_ids, custom_message=None):
         for user in users:
             try:
                 # Construir el link directo
-                assessment_link = f"{settings.FRONTEND_URL}/assessments/{assessment_id}"
+                assessment_link = f"{settings.FRONTEND_URL}/assessments"
                 
                 # Mensaje personalizado si existe
                 custom_msg_section = ""

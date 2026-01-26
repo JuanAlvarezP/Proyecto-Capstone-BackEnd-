@@ -151,10 +151,14 @@ CLOUDINARY_STORAGE = {
 }
 
 # Usar Cloudinary en producción, local en desarrollo
-if config('USE_CLOUDINARY', default=False, cast=bool):
+USE_CLOUDINARY = config('USE_CLOUDINARY', default=False, cast=bool)
+
+if USE_CLOUDINARY:
     DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
     MEDIA_URL = '/media/'
+    print("✅ CLOUDINARY ACTIVADO - Archivos se guardarán en Cloudinary")
 else:
     # Desarrollo local
     MEDIA_URL = '/media/'
     MEDIA_ROOT = BASE_DIR / 'media'
+    print("📁 ALMACENAMIENTO LOCAL - Archivos se guardarán en /media/")

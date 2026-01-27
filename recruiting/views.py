@@ -48,7 +48,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             base_scores = Assessment.objects.filter(
                 candidate_id=app.candidate_id,
                 project_id=app.project_id,
-                status__in=['EVALUATED']
+                status__in=['EVALUATED', 'COMPLETED']
             ).values('assessment_type').annotate(average=Avg('score'))
 
             # Inicializamos variables para el cálculo
@@ -57,9 +57,9 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             
             for score_data in base_scores:
                 if score_data['assessment_type'] == 'QUIZ':
-                    avg_quiz = score_data['average']
+                    avg_quiz = score_data['average'] or 0
                 elif score_data['assessment_type'] == 'CODING':
-                    avg_coding = score_data['average']
+                    avg_coding = score_data['average'] or 0
 
 
             weighted_technical_avg = (avg_quiz * quiz_w) + (avg_coding * coding_w)
@@ -70,7 +70,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 "num_pruebas_pendiente": Assessment.objects.filter(candidate_id=app.candidate_id, project_id=app.project_id, status='PENDING').count(),
                 "ia_match": f"{app.match_score}%", # El score de 60/40 de tu US03
                 "promedio_tecnico": round(weighted_technical_avg, 1), # Este es el que cambia con el slider
-                "num_pruebas": Assessment.objects.filter(candidate_id=app.candidate_id, project_id=app.project_id, status='EVALUATED').count(),
+                "num_pruebas": Assessment.objects.filter(candidate_id=app.candidate_id, project_id=app.project_id, status__in=['EVALUATED', 'COMPLETED']).count(),
                 "status": app.status
             })
 
